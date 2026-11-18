@@ -1,0 +1,45 @@
+bundle:
+  name: kmeans_rdd_vs_mllib_benchmark
+
+include:
+  - resources/*.yml
+
+variables:
+  input_path:
+    description: "DBFS or Unity Catalog Volume path for the text corpus"
+    default: "dbfs:/FileStore/kmeans_benchmark/synthetic_corpus"
+  num_docs:
+    description: "Number of synthetic documents generated when input_path is missing"
+    default: "200000"
+  vocab_size:
+    description: "CountVectorizer maximum vocabulary size (D)"
+    default: "16384"
+  k:
+    description: "Number of clusters (K)"
+    default: "8"
+  max_iter:
+    description: "Maximum Lloyd iterations"
+    default: "20"
+  tol:
+    description: "Convergence tolerance"
+    default: "1e-4"
+  seed:
+    description: "Random seed for synthetic corpus and centroid initialization"
+    default: "42"
+  distance:
+    description: "Distance measure: euclidean or cosine"
+    default: "euclidean"
+  node_type_id:
+    description: "Worker/driver node type for the classic single-user cluster (required for RDD APIs)"
+    default: "i3.xlarge"
+
+targets:
+  dev:
+    default: true
+    mode: development
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+

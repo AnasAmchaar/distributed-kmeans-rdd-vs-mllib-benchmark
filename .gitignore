@@ -1,0 +1,36 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python bytecode & packaging
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Pytest & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MLflow local tracking stores & artifacts
+mlruns/
+mlartifacts/
+mlflow.db
+mlflow.db-*
+
+# Spark & Databricks local artifacts
+metastore_db/
+spark-warehouse/
+derby.log
+.databricks/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

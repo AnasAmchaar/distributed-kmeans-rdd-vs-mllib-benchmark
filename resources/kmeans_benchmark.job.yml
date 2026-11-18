@@ -1,0 +1,44 @@
+resources:
+  jobs:
+    kmeans_benchmark_job:
+      name: "[${bundle.target}] Distributed Document Clustering K-Means Benchmark (RDD vs MLlib)"
+      performance_target: STANDARD
+      tags:
+        aidevkit_project: "ai-dev-kit"
+
+      parameters:
+        - name: input_path
+          default: ${var.input_path}
+        - name: num_docs
+          default: ${var.num_docs}
+        - name: vocab_size
+          default: ${var.vocab_size}
+        - name: k
+          default: ${var.k}
+        - name: max_iter
+          default: ${var.max_iter}
+        - name: tol
+          default: ${var.tol}
+        - name: seed
+          default: ${var.seed}
+        - name: distance
+          default: ${var.distance}
+
+      tasks:
+        - task_key: run_kmeans_benchmark
+          job_cluster_key: rdd_benchmark_cluster
+          notebook_task:
+            notebook_path: ../notebooks/kmeans_benchmark_driver.py
+
+      # Classic Single-User cluster is required for Phase 2 (`spark.sparkContext`,
+      # `RDD`, `broadcast`, `accumulator`, `aggregateByKey`), which are blocked on Serverless.
+      job_clusters:
+        - job_cluster_key: rdd_benchmark_cluster
+          new_cluster:
+            spark_version: 15.4.x-cpu-ml-scala2.12
+            node_type_id: ${var.node_type_id}
+            data_security_mode: SINGLE_USER
+            autoscale:
+              min_workers: 1
+              max_workers: 4
+
