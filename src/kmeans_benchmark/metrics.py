@@ -26,6 +26,8 @@ from typing import Any
 
 from pyspark.sql import SparkSession
 
+from kmeans_benchmark.spark_session import has_rdd_support
+
 logger = logging.getLogger(__name__)
 
 _STAGE_COUNTERS: tuple[str, ...] = (
@@ -76,11 +78,16 @@ class SparkRestClient:
     """Minimal client for Spark's Monitoring REST API (``/api/v1``)."""
 
     def __init__(self, spark: SparkSession, timeout_s: float = 10.0) -> None:
+        self._timeout = timeout_s
+        if not has_rdd_support(spark):
+            self._sc = None
+            self._base = ""
+            self._app_id = ""
+            return
         sc = spark.sparkContext
         self._sc = sc
         self._base = (sc.uiWebUrl or "").rstrip("/")
         self._app_id = sc.applicationId
-        self._timeout = timeout_s
 
     @property
     def available(self) -> bool:

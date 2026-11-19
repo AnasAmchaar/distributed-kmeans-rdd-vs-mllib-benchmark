@@ -19,6 +19,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
 from kmeans_benchmark.config import DataConfig
+from kmeans_benchmark.spark_session import has_rdd_support
 
 logger = logging.getLogger(__name__)
 
@@ -154,12 +155,27 @@ def generate_synthetic_corpus(spark: SparkSession, cfg: DataConfig) -> DataFrame
     n_parts = max(1, cfg.synthetic_num_partitions)
     per_part, remainder = divmod(cfg.synthetic_num_docs, n_parts)
     words_per_doc, purity, seed = cfg.synthetic_words_per_doc, cfg.synthetic_topic_purity, cfg.seed
-
-    rdd = spark.sparkContext.parallelize(range(n_parts), n_parts).flatMap(
-        lambda pid: _generate_partition(pid, per_part, remainder, words_per_doc, purity, seed)
-    )
     schema = StructType([StructField("value", StringType(), nullable=False)])
-    return spark.createDataFrame(rdd.map(lambda line: (line,)), schema)
+
+    if has_rdd_support(spark):
+        rdd = spark.sparkContext.parallelize(range(n_parts), n_parts).flatMap(
+            lambda pid: _generate_partition(pid, per_part, remainder, words_per_doc, purity, seed)
+        )
+        return spark.createDataFrame(rdd.map(lambda line: (line,)), schema)
+
+    # Spark Connect / Databricks Serverless fallback: generate partitions via mapInPandas
+    import pandas as pd
+
+    def _pdf_gen(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.DataFrame]:
+        for pdf in iterator:
+            lines: list[str] = []
+            for pid in pdf["id"].tolist():
+                lines.extend(
+                    _generate_partition(int(pid), per_part, remainder, words_per_doc, purity, seed)
+                )
+            yield pd.DataFrame({"value": lines})
+
+    return spark.range(0, n_parts, 1, n_parts).mapInPandas(_pdf_gen, schema=schema)
 
 
 def path_exists(spark: SparkSession, path: str) -> bool:
@@ -222,10 +238,18 @@ def load_corpus(spark: SparkSession, cfg: DataConfig) -> DataFrame:
     if not path_exists(spark, cfg.input_path):
         if not cfg.generate_if_missing:
             raise FileNotFoundError(cfg.input_path)
-        if not cfg.materialize_synthetic:
+        if not cfg.materialize_synthetic or not has_rdd_support(spark):
             logger.info("Using in-memory synthetic corpus (%d docs)", cfg.synthetic_num_docs)
             return _parse_lines(generate_synthetic_corpus(spark, cfg))
-        write_synthetic_corpus(spark, cfg)
+        try:
+            write_synthetic_corpus(spark, cfg)
+        except Exception as exc:  # noqa: BLE001 - e.g. dbfs:/ root disabled on workspace
+            logger.warning(
+                "Could not materialize synthetic corpus to %s (%s); using in-memory corpus",
+                cfg.input_path,
+                exc,
+            )
+            return _parse_lines(generate_synthetic_corpus(spark, cfg))
 
     raw = spark.read.text(cfg.input_path, wholetext=cfg.one_doc_per_file)
     return _parse_lines(raw)

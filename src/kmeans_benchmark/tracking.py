@@ -16,6 +16,7 @@ from pyspark.ml.clustering import KMeansModel
 from pyspark.sql import DataFrame, SparkSession
 
 from kmeans_benchmark.config import BenchmarkConfig, TrackingConfig
+from kmeans_benchmark.spark_session import get_spark_context, has_rdd_support
 
 if TYPE_CHECKING:  # avoid a circular import at runtime
     from kmeans_benchmark.benchmark import ImplementationResult
@@ -43,12 +44,17 @@ def configure_mlflow(cfg: TrackingConfig) -> str:
 
 def log_benchmark_context(spark: SparkSession, cfg: BenchmarkConfig, tfidf: TfidfResult) -> None:
     """Parent-run params: dataset shape, feature config, Spark environment."""
-    sc = spark.sparkContext
+    sc = get_spark_context(spark)
+    num_parts = (
+        tfidf.features_df.rdd.getNumPartitions()
+        if has_rdd_support(spark)
+        else (cfg.features.num_partitions or cfg.data.synthetic_num_partitions)
+    )
     mlflow.log_params(
         {
             "num_docs": tfidf.num_docs,
             "num_features": tfidf.num_features,
-            "num_partitions": tfidf.features_df.rdd.getNumPartitions(),
+            "num_partitions": num_parts,
             "spark_version": spark.version,
             "default_parallelism": sc.defaultParallelism,
             "input_path": cfg.data.input_path,
@@ -126,11 +132,16 @@ def _log_spark_model(model: Any, name: str, **kwargs: Any) -> None:
     try:
         mlflow.spark.log_model(model, **call_kwargs)
     except Exception as exc:  # noqa: BLE001
-        if "winutils" in str(exc).lower() or "UnsatisfiedLinkError" in str(exc):
-            logger.warning(
-                "Skipping mlflow.spark.log_model on local Windows without winutils.exe: %s", exc
-            )
-            mlflow.set_tag("spark_model_log_status", "skipped_missing_winutils")
+        msg = str(exc)
+        if (
+            "winutils" in msg.lower()
+            or "UnsatisfiedLinkError" in msg
+            or "JVM_ATTRIBUTE_NOT_SUPPORTED" in msg
+            or "UC_VOLUME" in msg
+            or "dfs_tmpdir" in msg
+        ):
+            logger.warning("Skipping mlflow.spark.log_model in current environment: %s", exc)
+            mlflow.set_tag("spark_model_log_status", "skipped_environment_restriction")
             return
         raise
 

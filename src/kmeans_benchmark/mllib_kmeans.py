@@ -11,6 +11,7 @@ from pyspark.sql import DataFrame
 
 from kmeans_benchmark.config import KMeansParams
 from kmeans_benchmark.preprocessing import FEATURES_COL
+from kmeans_benchmark.spark_session import safe_persist
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ def fit_mllib_kmeans(
           timed section and the evaluator re-uses the cached result.
     """
     model: KMeansModel = build_mllib_kmeans(params).fit(features_df)
-    predictions = model.transform(features_df).persist(storage_level)
+    predictions = safe_persist(model.transform(features_df), storage_level)
     predictions.count()  # cached DF => full plan (incl. prediction UDF) is computed
 
     summary = model.summary

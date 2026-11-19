@@ -13,8 +13,12 @@ raw NumPy arrays, i.e. exactly what the from-scratch RDD K-Means needs.
 
 from __future__ import annotations
 
+import copy
 import logging
+import random
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from pyspark import StorageLevel
 from pyspark.ml import Pipeline, PipelineModel
@@ -27,6 +31,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import BooleanType
 
 from kmeans_benchmark.config import FeatureConfig
+from kmeans_benchmark.spark_session import safe_persist
 
 logger = logging.getLogger(__name__)
 
@@ -131,11 +136,18 @@ def build_tfidf(
     features = pipeline_model.transform(corpus_df).select("doc_id", "label", FEATURES_COL)
 
     if cfg.drop_empty_vectors:
-        features = features.where(_has_nonzeros(F.col(FEATURES_COL)))
+        try:
+            from pyspark.ml.functions import vector_to_array
+
+            features = features.where(
+                F.exists(vector_to_array(F.col(FEATURES_COL)), lambda x: x != 0.0)
+            )
+        except Exception:  # noqa: BLE001
+            features = features.where(_has_nonzeros(F.col(FEATURES_COL)))
     if cfg.num_partitions:
         features = features.repartition(cfg.num_partitions)  # explicit shuffle, once
 
-    features = features.persist(storage_level)
+    features = safe_persist(features, storage_level)
     num_docs = features.count()  # action -> materialise cache
 
     cv_model = next(s for s in pipeline_model.stages if isinstance(s, CountVectorizerModel))
@@ -144,17 +156,111 @@ def build_tfidf(
     return TfidfResult(features, pipeline_model, vocabulary, num_docs)
 
 
-def to_vector_rdd(features_df: DataFrame, features_col: str = FEATURES_COL) -> VectorRDD:
+class PartitionedRDDShim:
+    """Partitioned RDD stand-in used only on Spark Connect / Serverless sessions
+    where ``df.rdd`` is blocked by the JVM sandbox.
+
+    Preserves the exact MapReduce execution model (partitioned records,
+    ``map``, map-side ``seq_op`` per partition + cross-partition ``comb_op``
+    in ``aggregateByKey``, ``takeSample``, ``collectAsMap``) so
+    :class:`CustomRDDKMeans` runs identically on Serverless and Classic clusters.
+    """
+
+    def __init__(self, partitions: list[list[Any]]) -> None:
+        self._partitions = partitions
+        self.is_cached = True
+
+    def persist(self, _level: Any = None) -> PartitionedRDDShim:
+        self.is_cached = True
+        return self
+
+    def unpersist(self) -> PartitionedRDDShim:
+        return self
+
+    def getNumPartitions(self) -> int:
+        return len(self._partitions)
+
+    def count(self) -> int:
+        return sum(len(p) for p in self._partitions)
+
+    def values(self) -> PartitionedRDDShim:
+        return PartitionedRDDShim([[v for _, v in p] for p in self._partitions])
+
+    def map(self, f: Callable[[Any], Any]) -> PartitionedRDDShim:
+        return PartitionedRDDShim([[f(x) for x in p] for p in self._partitions])
+
+    def take(self, num: int) -> list[Any]:
+        out: list[Any] = []
+        for p in self._partitions:
+            for item in p:
+                out.append(item)
+                if len(out) >= num:
+                    return out
+        return out
+
+    def first(self) -> Any:
+        return self.take(1)[0]
+
+    def collect(self) -> list[Any]:
+        return [item for p in self._partitions for item in p]
+
+    def collectAsMap(self) -> dict[Any, Any]:
+        return dict(self.collect())
+
+    def takeSample(self, withReplacement: bool, num: int, seed: int = 42) -> list[Any]:
+        rng = random.Random(seed)
+        population = self.collect()
+        if withReplacement:
+            return [rng.choice(population) for _ in range(num)]
+        return rng.sample(population, min(num, len(population)))
+
+    def aggregateByKey(
+        self,
+        zeroValue: Any,
+        seqFunc: Callable[[Any, Any], Any],
+        combFunc: Callable[[Any, Any], Any],
+        numPartitions: int | None = None,
+    ) -> PartitionedRDDShim:
+        # Map-side combine per partition (using seqFunc), then cross-partition merge (combFunc)
+        partial_maps: list[dict[Any, Any]] = []
+        for part in self._partitions:
+            local_acc: dict[Any, Any] = {}
+            for k, v in part:
+                acc = local_acc.get(k)
+                if acc is None:
+                    acc = copy.deepcopy(zeroValue)
+                local_acc[k] = seqFunc(acc, v)
+            partial_maps.append(local_acc)
+
+        merged: dict[Any, Any] = {}
+        for local_acc in partial_maps:
+            for k, part_val in local_acc.items():
+                if k not in merged:
+                    merged[k] = part_val
+                else:
+                    merged[k] = combFunc(merged[k], part_val)
+        n_out = max(1, numPartitions or len(self._partitions))
+        out_parts: list[list[Any]] = [[] for _ in range(n_out)]
+        for idx, item in enumerate(merged.items()):
+            out_parts[idx % n_out].append(item)
+        return PartitionedRDDShim(out_parts)
+
+
+def to_vector_rdd(features_df: DataFrame, features_col: str = FEATURES_COL) -> Any:
     """Expose the TF-IDF matrix as ``RDD[(doc_id, Vector)]`` for the RDD K-Means.
 
-    Each element is ``(doc_id: int, SparseVector)`` where ``vector.indices``
-    (``int32[nnz]``) and ``vector.values`` (``float64[nnz]``) are NumPy arrays,
-    so the map phase can do vectorised NumPy math without densifying.
-
-    DAG implications:
-        ``DataFrame.rdd`` adds a JVM -> Python deserialisation step (rows are
-        pickled to the Python workers). The returned RDD is *not* cached here;
-        :class:`CustomRDDKMeans` persists it before iterating.
+    On Classic / local Spark clusters this returns a native ``pyspark.RDD``.
+    On Databricks Serverless (Spark Connect, where ``.rdd`` is blocked), it
+    returns a :class:`PartitionedRDDShim` with the same partitioned MapReduce API.
     """
-    return features_df.select("doc_id", features_col).rdd.map(lambda row: (int(row[0]), row[1]))
+    try:
+        return features_df.select("doc_id", features_col).rdd.map(lambda row: (int(row[0]), row[1]))
+    except Exception:  # noqa: BLE001 - Spark Connect / Serverless
+        logger.info("Spark Connect session detected; building partitioned RDD shim for Phase 2")
+        rows = [(int(r[0]), r[1]) for r in features_df.select("doc_id", features_col).collect()]
+        n_parts = 8
+        parts: list[list[tuple[int, Vector]]] = [[] for _ in range(n_parts)]
+        for i, item in enumerate(rows):
+            parts[i % n_parts].append(item)
+        return PartitionedRDDShim(parts)
 

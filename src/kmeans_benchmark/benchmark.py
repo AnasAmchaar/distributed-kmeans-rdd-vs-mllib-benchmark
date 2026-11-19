@@ -44,7 +44,12 @@ from kmeans_benchmark.metrics import StageMetrics, StageMetricsCollector
 from kmeans_benchmark.mllib_kmeans import fit_mllib_kmeans
 from kmeans_benchmark.preprocessing import TfidfResult, build_tfidf, to_vector_rdd
 from kmeans_benchmark.rdd_kmeans import CustomRDDKMeans, IterationStats, RDDKMeansModel
-from kmeans_benchmark.spark_session import get_spark, ship_package_to_executors
+from kmeans_benchmark.spark_session import (
+    get_spark,
+    safe_persist,
+    safe_unpersist,
+    ship_package_to_executors,
+)
 from kmeans_benchmark.tracking import (
     configure_mlflow,
     log_benchmark_context,
@@ -116,7 +121,9 @@ def run_rdd_kmeans(spark: SparkSession, tfidf: TfidfResult, params: KMeansParams
     vectors = to_vector_rdd(tfidf.features_df)
     with StageMetricsCollector(spark) as measure:
         model = CustomRDDKMeans(params).fit(spark, vectors)  # persists `vectors`
-        predictions = model.transform(spark, tfidf.features_df).persist(StorageLevel.MEMORY_AND_DISK)
+        predictions = safe_persist(
+            model.transform(spark, tfidf.features_df), StorageLevel.MEMORY_AND_DISK
+        )
         predictions.count()
     vectors.unpersist()
     return ImplementationResult(
@@ -252,12 +259,12 @@ def _build_report(
 
 def cleanup(report: BenchmarkReport, tfidf: TfidfResult | None = None) -> None:
     """Release cached DataFrames and broadcasts created by the benchmark."""
-    report.rdd.predictions.unpersist()
-    report.mllib.predictions.unpersist()
+    safe_unpersist(report.rdd.predictions)
+    safe_unpersist(report.mllib.predictions)
     if isinstance(report.rdd.model, RDDKMeansModel):
         report.rdd.model.release()
     if tfidf is not None:
-        tfidf.features_df.unpersist()
+        safe_unpersist(tfidf.features_df)
 
 
 # --------------------------------------------------------------------------- #

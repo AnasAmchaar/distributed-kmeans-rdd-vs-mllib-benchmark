@@ -9,12 +9,45 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from pyspark.sql import SparkSession
+from typing import Any
+
+from pyspark import StorageLevel
+from pyspark.sql import DataFrame, SparkSession
 
 
 def is_databricks() -> bool:
     """Return ``True`` when running inside a Databricks Runtime."""
     return "DATABRICKS_RUNTIME_VERSION" in os.environ
+
+
+def has_rdd_support(spark: SparkSession) -> bool:
+    """Return ``True`` when the session exposes a JVM ``SparkContext`` and RDDs.
+
+    Returns ``False`` on Databricks Serverless / Spark Connect sessions.
+    """
+    try:
+        _ = spark.sparkContext
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def safe_persist(
+    df: DataFrame, storage_level: StorageLevel = StorageLevel.MEMORY_AND_DISK
+) -> DataFrame:
+    """Persist ``df`` when supported; degrade to a no-op on Databricks Serverless."""
+    try:
+        return df.persist(storage_level)
+    except Exception:  # noqa: BLE001
+        return df
+
+
+def safe_unpersist(df: DataFrame) -> None:
+    """Unpersist ``df`` when supported; no-op on Databricks Serverless."""
+    try:
+        df.unpersist()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _ensure_local_windows_hadoop() -> None:
@@ -103,7 +136,7 @@ def ship_package_to_executors(spark: SparkSession) -> str | None:
             f"{src_root}{os.pathsep}{existing_py_path}" if existing_py_path else src_root
         )
 
-    if spark.sparkContext.master.startswith("local"):
+    if not has_rdd_support(spark) or spark.sparkContext.master.startswith("local"):
         return None
 
     files = sorted(p for p in pkg_dir.rglob("*.py"))
@@ -115,3 +148,42 @@ def ship_package_to_executors(spark: SparkSession) -> str | None:
                 zf.write(file, (Path(pkg_dir.name) / file.relative_to(pkg_dir)).as_posix())
     spark.sparkContext.addPyFile(str(zip_path))
     return str(zip_path)
+
+
+class _BroadcastShim:
+    """In-process Broadcast stand-in for Spark Connect / Serverless sessions."""
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+    def destroy(self) -> None:
+        self.value = None
+
+
+class _AccumulatorShim:
+    """In-process Accumulator stand-in for Spark Connect / Serverless sessions."""
+
+    def __init__(self, initial: float = 0.0) -> None:
+        self.value = initial
+
+    def add(self, term: float) -> None:
+        self.value += term
+
+
+class SparkContextShim:
+    """SparkContext stand-in when running on a Spark Connect / Serverless cluster."""
+
+    defaultParallelism: int = max(2, os.cpu_count() or 4)
+
+    def broadcast(self, value: Any) -> Any:
+        return _BroadcastShim(value)
+
+    def accumulator(self, initial: float = 0.0) -> Any:
+        return _AccumulatorShim(initial)
+
+
+def get_spark_context(spark: SparkSession) -> Any:
+    """Return ``spark.sparkContext`` or a :class:`SparkContextShim` on Serverless."""
+    if has_rdd_support(spark):
+        return spark.sparkContext
+    return SparkContextShim()

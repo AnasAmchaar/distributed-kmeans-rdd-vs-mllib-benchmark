@@ -20,18 +20,33 @@
 
 import logging
 import os
+import subprocess
 import sys
 
-# In a Databricks Git folder the notebook's CWD is its own directory.
+# 1. If running inside a Databricks Git folder, load from ../src.
+# 2. If running as a standalone notebook in Databricks, auto-install from the public GitHub repo.
 SRC_DIR = os.path.abspath(os.path.join(os.getcwd(), "..", "src"))
-if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR)
+if os.path.isdir(os.path.join(SRC_DIR, "kmeans_benchmark")):
+    if SRC_DIR not in sys.path:
+        sys.path.insert(0, SRC_DIR)
+else:
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--upgrade",
+            "git+https://github.com/AnasAmchaar/distributed-kmeans-rdd-vs-mllib-benchmark.git",
+        ]
+    )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", force=True)
 
-from kmeans_benchmark.spark_session import ship_package_to_executors
+from kmeans_benchmark.spark_session import get_spark_context, ship_package_to_executors
 
-# Executors must import the map/reduce functions -> ship the package as a zip.
+# Executors must import the map/reduce functions -> ship the package as a zip (no-op on Serverless).
 ship_package_to_executors(spark)
 
 # COMMAND ----------
@@ -55,7 +70,7 @@ cfg = BenchmarkConfig(
     data=DataConfig(
         input_path=dbutils.widgets.get("input_path"),
         synthetic_num_docs=int(dbutils.widgets.get("num_docs")),
-        synthetic_num_partitions=max(64, spark.sparkContext.defaultParallelism * 2),
+        synthetic_num_partitions=max(16, get_spark_context(spark).defaultParallelism * 2),
         seed=int(dbutils.widgets.get("seed")),
     ),
     features=FeatureConfig(vocab_size=int(dbutils.widgets.get("vocab_size")), min_df=5.0),

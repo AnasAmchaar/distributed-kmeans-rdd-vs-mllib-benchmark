@@ -43,6 +43,7 @@ from pyspark.sql.types import IntegerType, StructField, StructType
 
 from kmeans_benchmark import vector_ops as vo
 from kmeans_benchmark.config import KMeansParams
+from kmeans_benchmark.spark_session import get_spark_context, has_rdd_support
 from kmeans_benchmark.vector_ops import FloatArray
 
 logger = logging.getLogger(__name__)
@@ -187,7 +188,7 @@ class RDDKMeansModel:
         """Lazily broadcast ``(centers, ||centers||²)`` once for all scoring jobs."""
         if self._bc is None:
             sq = np.einsum("ij,ij->i", self.centers, self.centers)
-            self._bc = spark.sparkContext.broadcast((self.centers, sq))
+            self._bc = get_spark_context(spark).broadcast((self.centers, sq))
         return self._bc
 
     def assign(self, spark: SparkSession, data: VectorRDD) -> AssignmentRDD:
@@ -215,13 +216,28 @@ class RDDKMeansModel:
         intrinsic serialisation cost of a Python-side model.
         """
         bc, dm = self.broadcast(spark), self.distance_measure
-        schema = StructType(
-            [*df.schema.fields, StructField(prediction_col, IntegerType(), nullable=False)]
-        )
-        rdd = df.rdd.mapPartitions(
-            partial(_append_prediction, bc_centers=bc, distance_measure=dm, features_col=features_col)
-        )
-        return spark.createDataFrame(rdd, schema)
+        if has_rdd_support(spark):
+            schema = StructType(
+                [*df.schema.fields, StructField(prediction_col, IntegerType(), nullable=False)]
+            )
+            rdd = df.rdd.mapPartitions(
+                partial(
+                    _append_prediction,
+                    bc_centers=bc,
+                    distance_measure=dm,
+                    features_col=features_col,
+                )
+            )
+            return spark.createDataFrame(rdd, schema)
+
+        # Spark Connect / Databricks Serverless fallback
+        centers, sq_norms = bc.value
+        rows = df.select("doc_id", features_col).collect()
+        preds = [
+            (int(r[0]), int(vo.closest_center(r[1], centers, sq_norms, dm)[0])) for r in rows
+        ]
+        pred_df = spark.createDataFrame(preds, ["doc_id", prediction_col])
+        return df.join(pred_df, on="doc_id", how="inner")
 
     def release(self) -> None:
         """Destroy the scoring broadcast (frees executor + driver memory)."""
@@ -290,7 +306,7 @@ class CustomRDDKMeans:
         Returns:
             Fitted :class:`RDDKMeansModel`.
         """
-        sc = spark.sparkContext
+        sc = get_spark_context(spark)
         p = self.params
 
         vectors: RDD[Vector] = data.values()
