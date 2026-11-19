@@ -7,10 +7,13 @@ from kmeans_benchmark.config import (
     KMeansParams,
     TrackingConfig,
 )
+from kmeans_benchmark.inference import DocumentClusterAssignment, DualDocumentClusterer
 
 __all__ = [
     "BenchmarkConfig",
     "DataConfig",
+    "DocumentClusterAssignment",
+    "DualDocumentClusterer",
     "FeatureConfig",
     "KMeansParams",
     "TrackingConfig",

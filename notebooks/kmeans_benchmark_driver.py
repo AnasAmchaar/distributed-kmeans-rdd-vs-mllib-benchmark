@@ -164,6 +164,27 @@ print(json.dumps({k: v[:8] for k, v in report.mllib.top_terms.items()}, indent=2
 
 # COMMAND ----------
 
+# MAGIC %md ## Phase 5 — Interactive Document Clustering (Cluster Any Custom Text with Both Approaches)
+
+# COMMAND ----------
+
+from kmeans_benchmark.inference import DualDocumentClusterer
+
+clusterer = DualDocumentClusterer.from_benchmark(tfidf, report, top_n_terms=6)
+
+sample_documents = [
+    "PostgreSQL B-tree index deadlock during ACID transaction commit and SQL query optimization.",
+    "Kubernetes pod autoscaling with Docker containers, Terraform, and AWS EKS ingress.",
+    "Transformer neural network training with gradient descent, backpropagation, and attention layers.",
+    "TLS encryption certificate vulnerability, OAuth JWT token authentication, and zero trust firewall.",
+    "React TypeScript component rendering in the browser DOM with Tailwind CSS flexbox layout.",
+]
+
+assignments = clusterer.cluster_texts(spark, sample_documents)
+display(spark.createDataFrame([a.to_dict() for a in assignments]))
+
+# COMMAND ----------
+
 # MAGIC %md ### Optional: sweep K (each K logs its own parent run)
 
 # COMMAND ----------
