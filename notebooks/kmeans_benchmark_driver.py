@@ -37,6 +37,7 @@ else:
             "pip",
             "install",
             "-q",
+            "--no-deps",
             "--upgrade",
             "git+https://github.com/AnasAmchaar/distributed-kmeans-rdd-vs-mllib-benchmark.git",
         ]
