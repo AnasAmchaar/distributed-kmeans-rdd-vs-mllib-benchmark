@@ -50,6 +50,14 @@ def test_closest_center_cosine_and_dense_input() -> None:
     assert 0.0 <= cost < 0.01
 
 
+def test_closest_center_manhattan_l1() -> None:
+    x = np.array([0.9, 0.1, 0.0, 0.0])
+    best, wsse = vo.closest_center(x, CENTERS, SQ, "manhattan")
+    assert best == 0
+    assert wsse == pytest.approx(0.02)
+    assert vo.center_shift(np.array([1.0, 2.0]), np.array([4.0, 6.0]), "manhattan") == pytest.approx(7.0)
+
+
 def test_add_into_and_centroid() -> None:
     acc = np.zeros(4)
     vo.add_into(acc, sparse([1.0, 0.0, 2.0, 0.0]))

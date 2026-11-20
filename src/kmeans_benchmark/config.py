@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-DistanceMeasure = Literal["euclidean", "cosine"]
+DistanceMeasure = Literal["euclidean", "manhattan", "cosine"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,13 +104,18 @@ class KMeansParams:
             raise ValueError(f"max_iter must be >= 1, got {self.max_iter}")
         if self.tol < 0:
             raise ValueError(f"tol must be >= 0, got {self.tol}")
-        if self.distance_measure not in ("euclidean", "cosine"):
+        if self.distance_measure not in ("euclidean", "manhattan", "cosine"):
             raise ValueError(f"Unsupported distance_measure={self.distance_measure!r}")
+
+    @property
+    def mllib_distance(self) -> str:
+        """MLlib KMeans supports ``euclidean`` and ``cosine`` natively."""
+        return "cosine" if self.distance_measure == "cosine" else "euclidean"
 
     @property
     def evaluator_distance(self) -> str:
         """Matching ``ClusteringEvaluator.distanceMeasure`` value."""
-        return "squaredEuclidean" if self.distance_measure == "euclidean" else "cosine"
+        return "cosine" if self.distance_measure == "cosine" else "squaredEuclidean"
 
 
 @dataclass(frozen=True, slots=True)

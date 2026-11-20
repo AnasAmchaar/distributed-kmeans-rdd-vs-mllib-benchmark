@@ -1,13 +1,16 @@
-"""Real-time streaming HTTP + SSE server for the K-Means Benchmark Frontend.
+"""Real-time streaming HTTP + SSE server for Mini-Projet 10 (K-Means RDD L1/L2 vs MLlib).
 
 Endpoints:
-    * ``GET  /``                         -> serves ``frontend/index.html``
-    * ``GET  /api/status``               -> server & ``mlflow.db`` status
-    * ``GET  /api/benchmark/stream?...`` -> Server-Sent Events (SSE) stream that
-      executes Phases 1-4 live on PySpark and pushes every phase transition and
-      every single RDD Lloyd iteration (cost, shift, duration) in real time
-    * ``POST /api/cluster``              -> clusters arbitrary raw text using
-      the active ``DualDocumentClusterer`` (both RDD and MLlib models)
+    * ``GET  /``                            -> serves ``frontend/index.html``
+    * ``GET  /api/mp10``                    -> returns ``benchmark_results_58d.json``
+    * ``GET  /kmeans_convergence_report.pdf`` -> serves the generated PDF report deliverable
+    * ``GET  /api/benchmark/stream?...``    -> Server-Sent Events (SSE) stream that
+      executes the Mini-Projet 10 benchmark live on PySpark (58D vectors, RDD L2
+      Euclidean + RDD L1 Manhattan with ``reduceByKey`` & WSSE per iteration,
+      MLlib ``k-means||``, Elbow method & Silhouette, 2D PCA projection, and
+      live regeneration of ``kmeans_convergence_report.pdf``).
+    * ``POST /api/cluster``                 -> clusters a 58D vector or raw text document
+      with both RDD (L2 & L1) and MLlib models.
 """
 
 from __future__ import annotations
@@ -15,86 +18,59 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sqlite3
+import sys
 import threading
 import time
 import urllib.parse
+from dataclasses import asdict
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-import mlflow
-import numpy as np
 from pyspark import StorageLevel
+from pyspark.ml.clustering import KMeans
+from pyspark.ml.evaluation import ClusteringEvaluator
 
-from kmeans_benchmark.config import (
-    BenchmarkConfig,
-    DataConfig,
-    FeatureConfig,
-    KMeansParams,
-    TrackingConfig,
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from benchmark_kmeans import (  # noqa: E402
+    _evaluate_rdd_silhouette,
+    compute_elbow_and_silhouette,
+    compute_pca_2d_projection,
+    generate_convergence_pdf_report,
 )
-from kmeans_benchmark.evaluation import (
-    adjusted_rand_index,
-    agreement_between,
-    cluster_sizes,
-    silhouette_score,
-    top_terms_per_cluster,
+from custom_kmeans_rdd import (  # noqa: E402
+    CustomKMeansRDD,
+    RDDIterationRecord,
+    build_58d_dataframe,
+    generate_58d_document_vectors,
 )
-from kmeans_benchmark.inference import DualDocumentClusterer
-from kmeans_benchmark.ingestion import load_corpus
-from kmeans_benchmark.metrics import StageMetricsCollector
-from kmeans_benchmark.mllib_kmeans import fit_mllib_kmeans
-from kmeans_benchmark.preprocessing import build_tfidf, to_vector_rdd
-from kmeans_benchmark.rdd_kmeans import CustomRDDKMeans, IterationStats
-from kmeans_benchmark.spark_session import (
+from kmeans_benchmark.spark_session import (  # noqa: E402
     get_spark,
     safe_persist,
     safe_unpersist,
     ship_package_to_executors,
 )
-from kmeans_benchmark.tracking import configure_mlflow, log_benchmark_context
 
 logger = logging.getLogger(__name__)
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = ROOT_DIR / "frontend"
-MLFLOW_DB = ROOT_DIR / "mlflow.db"
+MP10_JSON = ROOT_DIR / "benchmark_results_58d.json"
+MP10_PDF = ROOT_DIR / "kmeans_convergence_report.pdf"
 
 _SPARK_LOCK = threading.Lock()
-_ACTIVE_CLUSTERER: DualDocumentClusterer | None = None
-
-
-def load_mlflow_sqlite_summary(db_path: Path = MLFLOW_DB) -> dict[str, Any]:
-    """Read live runs summary from ``mlflow.db`` if present."""
-    if not db_path.exists():
-        return {"source": "embedded", "runs_count": 3, "has_live_clusterer": _ACTIVE_CLUSTERER is not None}
-    conn = sqlite3.connect(str(db_path))
-    try:
-        cur = conn.cursor()
-        runs = cur.execute(
-            "SELECT run_uuid, name, status, start_time, end_time FROM runs WHERE lifecycle_stage='active'"
-        ).fetchall()
-        return {
-            "source": "mlflow.db",
-            "runs_count": len(runs),
-            "has_live_clusterer": _ACTIVE_CLUSTERER is not None,
-        }
-    finally:
-        conn.close()
 
 
 class BenchmarkDashboardHandler(SimpleHTTPRequestHandler):
-    """Serves ``frontend/index.html``, SSE benchmark streaming, and live inference."""
+    """Serves ``frontend/index.html``, ``/api/mp10``, PDF report, and SSE live stream."""
 
     protocol_version = "HTTP/1.1"
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
 
-    # ------------------------------------------------------------------ #
-    # SSE helper
-    # ------------------------------------------------------------------ #
     def _send_sse(self, event: str, data: dict[str, Any]) -> None:
         payload = f"event: {event}\ndata: {json.dumps(data)}\n\n".encode("utf-8")
         self.wfile.write(payload)
@@ -108,84 +84,42 @@ class BenchmarkDashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    # ------------------------------------------------------------------ #
-    # HTTP GET
-    # ------------------------------------------------------------------ #
     def do_GET(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/api/status":
-            self._send_json(200, load_mlflow_sqlite_summary())
+        if parsed.path == "/api/mp10":
+            if MP10_JSON.exists():
+                data = json.loads(MP10_JSON.read_text(encoding="utf-8"))
+                self._send_json(200, data)
+            else:
+                self._send_json(200, {})
             return
-        if parsed.path == "/api/runs":
-            self._send_json(200, {})
+        if parsed.path == "/kmeans_convergence_report.pdf" and MP10_PDF.exists():
+            pdf_bytes = MP10_PDF.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header(
+                "Content-Disposition", 'inline; filename="kmeans_convergence_report.pdf"'
+            )
+            self.send_header("Content-Length", str(len(pdf_bytes)))
+            self.end_headers()
+            self.wfile.write(pdf_bytes)
             return
         if parsed.path == "/api/benchmark/stream":
-            self._handle_benchmark_stream(urllib.parse.parse_qs(parsed.query))
+            self._handle_mp10_stream(urllib.parse.parse_qs(parsed.query))
             return
         super().do_GET()
 
-    # ------------------------------------------------------------------ #
-    # HTTP POST (/api/cluster)
-    # ------------------------------------------------------------------ #
-    def do_POST(self) -> None:  # noqa: N802
-        global _ACTIVE_CLUSTERER
-        parsed = urllib.parse.urlparse(self.path)
-        if parsed.path != "/api/cluster":
-            self._send_json(404, {"error": "Not found"})
-            return
-
-        length = int(self.headers.get("Content-Length", "0"))
-        raw = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
-        body = json.loads(raw)
-        text = str(body.get("text", "")).strip()
-        if not text:
-            self._send_json(400, {"error": "Empty text"})
-            return
-
-        with _SPARK_LOCK:
-            spark = get_spark(local_cores="2")
-            if _ACTIVE_CLUSTERER is None:
-                cfg = BenchmarkConfig(
-                    data=DataConfig(
-                        materialize_synthetic=False,
-                        synthetic_num_docs=600,
-                        synthetic_num_partitions=4,
-                    ),
-                    features=FeatureConfig(vocab_size=1024, min_df=2.0),
-                    kmeans=KMeansParams(k=8, max_iter=6, tol=1e-4, seed=42),
-                )
-                _ACTIVE_CLUSTERER = DualDocumentClusterer.fit(spark, cfg=cfg, top_n_terms=8)
-            assignment = _ACTIVE_CLUSTERER.cluster_texts(spark, [text])[0]
-            self._send_json(200, {"engine": "spark_live", "assignment": assignment.to_dict()})
-
-    # ------------------------------------------------------------------ #
-    # Live Streaming Benchmark Execution (Server-Sent Events)
-    # ------------------------------------------------------------------ #
-    def _handle_benchmark_stream(self, qs: dict[str, list[str]]) -> None:
-        global _ACTIVE_CLUSTERER
-
+    def _handle_mp10_stream(self, qs: dict[str, list[str]]) -> None:
         def _get_int(key: str, default: int, lo: int, hi: int) -> int:
             try:
                 return max(lo, min(hi, int(qs.get(key, [str(default)])[0])))
             except Exception:  # noqa: BLE001
                 return default
 
-        def _get_float(key: str, default: float) -> float:
-            try:
-                return float(qs.get(key, [str(default)])[0])
-            except Exception:  # noqa: BLE001
-                return default
-
-        num_docs = _get_int("num_docs", 800, 100, 50_000)
-        k = _get_int("k", 8, 2, 32)
-        max_iter = _get_int("max_iter", 6, 1, 50)
-        vocab_size = _get_int("vocab_size", 1024, 128, 32_768)
-        num_partitions = _get_int("num_partitions", 4, 2, 64)
+        num_docs = _get_int("num_docs", 1000, 150, 20_000)
+        k = _get_int("k", 5, 2, 15)
+        max_iter = _get_int("max_iter", 10, 2, 30)
         seed = _get_int("seed", 42, 0, 999_999)
-        tol = _get_float("tol", 1e-4)
-        distance = qs.get("distance", ["euclidean"])[0]
-        if distance not in ("euclidean", "cosine"):
-            distance = "euclidean"
 
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -200,261 +134,229 @@ class BenchmarkDashboardHandler(SimpleHTTPRequestHandler):
                 self._send_sse(
                     "phase",
                     {
-                        "phase": "spark_init",
-                        "progress": 6,
-                        "message": "Acquiring warm Apache Spark 3.5 session & executors...",
+                        "phase": "SPARK_INIT",
+                        "progress": 5,
+                        "message": "Initialisation de la session Apache Spark 3.5 & exécuteurs...",
                     },
                 )
                 spark = get_spark(local_cores="2")
                 ship_package_to_executors(spark)
 
-                cfg = BenchmarkConfig(
-                    data=DataConfig(
-                        materialize_synthetic=False,
-                        synthetic_num_docs=num_docs,
-                        synthetic_num_partitions=num_partitions,
-                        seed=seed,
+                # Section 3: Représentation Vectorielle des Documents (58D)
+                self._send_sse(
+                    "phase",
+                    {
+                        "phase": "VECTEURS_58D",
+                        "progress": 12,
+                        "message": f"Génération et mise en cache de {num_docs:,} vecteurs de documents 58D ([0.0, 0.64, 0.64, ..., 3.78, 1.32, 45.0])...",
+                    },
+                )
+                matrix_58d, _ = generate_58d_document_vectors(
+                    num_docs=num_docs, k_true=k, seed=seed
+                )
+                sample_58d = [round(float(v), 2) for v in matrix_58d[0].tolist()]
+                df_58d = safe_persist(
+                    build_58d_dataframe(
+                        spark, num_docs=num_docs, k_true=k, seed=seed, num_partitions=4
                     ),
-                    features=FeatureConfig(vocab_size=vocab_size, min_df=2.0),
-                    kmeans=KMeansParams(
-                        k=k,
-                        max_iter=max_iter,
-                        tol=tol,
-                        seed=seed,
-                        distance_measure=distance,  # type: ignore[arg-type]
-                    ),
-                    tracking=TrackingConfig(experiment_name="kmeans_rdd_vs_mllib_benchmark"),
+                    StorageLevel.MEMORY_AND_DISK,
                 )
+                df_58d.count()
 
-                # Phase 1a: Ingestion
+                # 1. K-Means Manuel sur RDD — Distance Euclidienne (L2)
                 self._send_sse(
                     "phase",
                     {
-                        "phase": "ingestion",
-                        "progress": 14,
-                        "message": f"Phase 1a: Generating {num_docs:,} synthetic technical docs across {num_partitions} Spark partitions...",
-                    },
-                )
-                corpus_df = load_corpus(spark, cfg.data)
-
-                # Phase 1b: TF-IDF
-                self._send_sse(
-                    "phase",
-                    {
-                        "phase": "tfidf",
-                        "progress": 22,
-                        "message": f"Phase 1b: Fitting distributed TF-IDF pipeline (vocab_size={vocab_size}, L2 Normalizer)...",
-                    },
-                )
-                t_tfidf = time.perf_counter()
-                tfidf = build_tfidf(corpus_df, cfg.features)
-                tfidf_elapsed = time.perf_counter() - t_tfidf
-                self._send_sse(
-                    "tfidf_done",
-                    {
-                        "progress": 32,
-                        "num_docs": tfidf.num_docs,
-                        "num_features": tfidf.num_features,
-                        "num_partitions": num_partitions,
-                        "elapsed_s": round(tfidf_elapsed, 3),
-                        "message": f"TF-IDF matrix cached: N={tfidf.num_docs:,} x D={tfidf.num_features} ({tfidf_elapsed:.2f}s)",
+                        "phase": "RDD_L2_START",
+                        "progress": 18,
+                        "message": f"Démarrage K-Means Manuel RDD — Distance Euclidienne (L2), K={k}, maxIter={max_iter} (Map + reduceByKey + WSSE)...",
                     },
                 )
 
-                # Phase 2: Custom RDD K-Means with per-iteration live callback!
-                self._send_sse(
-                    "phase",
-                    {
-                        "phase": "rdd_start",
-                        "progress": 36,
-                        "message": f"Phase 2: Running CustomRDDKMeans (K={k}, maxIter={max_iter}, distance={distance})...",
-                    },
-                )
-                rdd_history_payload: list[dict[str, Any]] = []
-                rdd_t0 = time.perf_counter()
-
-                def _on_iteration(stats: IterationStats) -> None:
-                    pct = 36 + int((stats.iteration / max_iter) * 38)
-                    item = {
-                        "iter": stats.iteration,
-                        "max_iter": max_iter,
-                        "cost": round(stats.cost, 4),
-                        "shift": stats.max_center_shift,
-                        "empty_clusters": stats.empty_clusters,
-                        "seconds": round(stats.duration_seconds, 3),
-                        "cumulative_seconds": round(time.perf_counter() - rdd_t0, 3),
-                        "progress": min(pct, 74),
-                    }
-                    rdd_history_payload.append(item)
-                    self._send_sse("rdd_iteration", item)
-
-                vectors = to_vector_rdd(tfidf.features_df)
-                with StageMetricsCollector(spark, settle_polls=6, poll_s=0.15) as rdd_measure:
-                    rdd_model = CustomRDDKMeans(
-                        cfg.kmeans, iteration_callback=_on_iteration
-                    ).fit(spark, vectors)
-                    rdd_preds = safe_persist(
-                        rdd_model.transform(spark, tfidf.features_df),
-                        StorageLevel.MEMORY_AND_DISK,
+                def _on_l2_iter(rec: RDDIterationRecord) -> None:
+                    pct = 18 + int((rec.iteration / max_iter) * 24)
+                    self._send_sse(
+                        "rdd_l2_iter",
+                        {
+                            "iteration": rec.iteration,
+                            "max_iter": max_iter,
+                            "wsse": round(rec.wsse, 2),
+                            "max_shift": rec.max_shift,
+                            "duration_seconds": round(rec.duration_seconds, 3),
+                            "progress": min(pct, 42),
+                        },
                     )
-                    rdd_preds.count()
-                vectors.unpersist()
 
+                rdd_l2 = CustomKMeansRDD(
+                    k=k,
+                    max_iter=max_iter,
+                    tol=1e-4,
+                    distance="euclidean",
+                    seed=seed,
+                    iteration_callback=_on_l2_iter,
+                ).fit(spark, df_58d)
+                rdd_l2_sil = _evaluate_rdd_silhouette(spark, df_58d, rdd_l2)
+
+                # 2. K-Means Manuel sur RDD — Distance Manhattan (L1)
                 self._send_sse(
                     "phase",
                     {
-                        "phase": "rdd_eval",
-                        "progress": 76,
-                        "message": "Evaluating RDD clusters with ClusteringEvaluator (Silhouette & ARI)...",
+                        "phase": "RDD_L1_START",
+                        "progress": 45,
+                        "message": f"Démarrage K-Means Manuel RDD — Distance Manhattan (L1), K={k}, maxIter={max_iter} (Map + reduceByKey + WSSE)...",
                     },
                 )
-                rdd_sil = silhouette_score(rdd_preds, cfg.kmeans)
-                rdd_ari = adjusted_rand_index(rdd_preds, "label", "prediction")
-                rdd_sizes = cluster_sizes(rdd_preds)
-                rdd_terms = top_terms_per_cluster(rdd_model.centers, tfidf.vocabulary, 10)
-                rdd_sm = rdd_measure.metrics
 
-                rdd_payload = {
-                    "time": round(rdd_measure.elapsed_seconds, 3),
-                    "iterations": rdd_model.num_iterations,
-                    "converged": rdd_model.converged,
-                    "silhouette": round(rdd_sil, 5),
-                    "cost": round(rdd_model.training_cost, 4),
-                    "ariTruth": round(rdd_ari, 4),
-                    "shuffleRead": rdd_sm.shuffleReadBytes if rdd_sm else 0,
-                    "shuffleWrite": rdd_sm.shuffleWriteBytes if rdd_sm else 0,
-                    "inputBytes": rdd_sm.inputBytes if rdd_sm else 0,
-                    "executorRunMs": rdd_sm.executorRunTime if rdd_sm else 0,
-                    "executorCpuMs": round((rdd_sm.executorCpuTime / 1e6) if rdd_sm else 0.0, 2),
-                    "gcMs": rdd_sm.jvmGcTime if rdd_sm else 0,
-                    "stages": rdd_sm.num_stages if rdd_sm else 0,
-                    "tasks": rdd_sm.num_tasks if rdd_sm else 0,
-                    "history": rdd_history_payload,
-                    "clusterSizes": rdd_sizes,
-                    "topTerms": rdd_terms,
-                }
-                self._send_sse("rdd_done", {"progress": 80, "rdd": rdd_payload})
+                def _on_l1_iter(rec: RDDIterationRecord) -> None:
+                    pct = 45 + int((rec.iteration / max_iter) * 24)
+                    self._send_sse(
+                        "rdd_l1_iter",
+                        {
+                            "iteration": rec.iteration,
+                            "max_iter": max_iter,
+                            "wsse": round(rec.wsse, 2),
+                            "max_shift": rec.max_shift,
+                            "duration_seconds": round(rec.duration_seconds, 3),
+                            "progress": min(pct, 69),
+                        },
+                    )
 
-                # Phase 3: PySpark MLlib K-Means
+                rdd_l1 = CustomKMeansRDD(
+                    k=k,
+                    max_iter=max_iter,
+                    tol=1e-4,
+                    distance="manhattan",
+                    seed=seed,
+                    iteration_callback=_on_l1_iter,
+                ).fit(spark, df_58d)
+                rdd_l1_sil = _evaluate_rdd_silhouette(spark, df_58d, rdd_l1)
+
+                # 3. KMeans PySpark MLlib API (Initialisation parallèle K-Means||)
                 self._send_sse(
                     "phase",
                     {
-                        "phase": "mllib_start",
-                        "progress": 84,
-                        "message": "Phase 3: Running PySpark MLlib KMeans (in-JVM BLAS / Tungsten)...",
+                        "phase": "MLLIB_KMEANS_II",
+                        "progress": 73,
+                        "message": "Exécution de PySpark MLlib KMeans (initMode='k-means||', Catalyst / Tungsten DataFrames)...",
                     },
                 )
-                with StageMetricsCollector(spark, settle_polls=6, poll_s=0.15) as mllib_measure:
-                    mllib_res = fit_mllib_kmeans(tfidf.features_df, cfg.kmeans)
+                t_ml = time.perf_counter()
+                mllib_km = KMeans(
+                    featuresCol="features",
+                    predictionCol="prediction",
+                    k=k,
+                    maxIter=max_iter,
+                    tol=1e-4,
+                    seed=seed,
+                    initMode="k-means||",
+                    distanceMeasure="euclidean",
+                )
+                mllib_model = mllib_km.fit(df_58d)
+                mllib_preds = mllib_model.transform(df_58d)
+                mllib_preds.count()
+                mllib_time = time.perf_counter() - t_ml
 
-                mllib_sil = silhouette_score(mllib_res.predictions, cfg.kmeans)
-                mllib_ari = adjusted_rand_index(mllib_res.predictions, "label", "prediction")
-                mllib_sizes = cluster_sizes(mllib_res.predictions)
-                mllib_centers = np.vstack(mllib_res.model.clusterCenters())
-                mllib_terms = top_terms_per_cluster(mllib_centers, tfidf.vocabulary, 10)
-                mllib_sm = mllib_measure.metrics
+                evaluator = ClusteringEvaluator(
+                    featuresCol="features",
+                    predictionCol="prediction",
+                    metricName="silhouette",
+                    distanceMeasure="squaredEuclidean",
+                )
+                mllib_sil = float(evaluator.evaluate(mllib_preds))
+                mllib_wsse = float(mllib_model.summary.trainingCost)
+                mllib_iters = int(mllib_model.summary.numIter)
 
-                mllib_payload = {
-                    "time": round(mllib_measure.elapsed_seconds, 3),
-                    "iterations": mllib_res.num_iterations,
-                    "converged": mllib_res.num_iterations < max_iter,
-                    "silhouette": round(mllib_sil, 5),
-                    "cost": round(mllib_res.training_cost, 4),
-                    "ariTruth": round(mllib_ari, 4),
-                    "shuffleRead": mllib_sm.shuffleReadBytes if mllib_sm else 0,
-                    "shuffleWrite": mllib_sm.shuffleWriteBytes if mllib_sm else 0,
-                    "inputBytes": mllib_sm.inputBytes if mllib_sm else 0,
-                    "executorRunMs": mllib_sm.executorRunTime if mllib_sm else 0,
-                    "executorCpuMs": round(
-                        (mllib_sm.executorCpuTime / 1e6) if mllib_sm else 0.0, 2
-                    ),
-                    "gcMs": mllib_sm.jvmGcTime if mllib_sm else 0,
-                    "stages": mllib_sm.num_stages if mllib_sm else 0,
-                    "tasks": mllib_sm.num_tasks if mllib_sm else 0,
-                    "clusterSizes": mllib_sizes,
-                    "topTerms": mllib_terms,
-                }
-                self._send_sse("mllib_done", {"progress": 92, "mllib": mllib_payload})
-
-                # Phase 4: Cross-engine ARI & MLflow logging
+                # 4. Méthode du coude (Elbow) & Silhouette
                 self._send_sse(
                     "phase",
                     {
-                        "phase": "mlflow",
-                        "progress": 96,
-                        "message": "Phase 4: Computing cross-engine ARI & recording run in MLflow...",
+                        "phase": "ELBOW_SILHOUETTE",
+                        "progress": 82,
+                        "message": "Calcul de la Méthode du Coude (Elbow WSSE) & Silhouette Score pour K in {2, 3, 4, 5, 6, 8, 10}...",
                     },
                 )
-                ari_cross = agreement_between(rdd_preds, mllib_res.predictions)
-                speedup = rdd_measure.elapsed_seconds / max(mllib_measure.elapsed_seconds, 1e-9)
-
-                run_id = f"live_{int(time.time())}"
-                try:
-                    configure_mlflow(cfg.tracking)
-                    with mlflow.start_run(run_name="kmeans_benchmark_live") as parent:
-                        run_id = parent.info.run_id
-                        log_benchmark_context(spark, cfg, tfidf)
-                        mlflow.log_metrics(
-                            {
-                                "speedup_mllib_over_rdd": speedup,
-                                "ari_rdd_vs_mllib": ari_cross,
-                                "rdd_total_execution_time_seconds": rdd_measure.elapsed_seconds,
-                                "mllib_total_execution_time_seconds": mllib_measure.elapsed_seconds,
-                                "rdd_silhouette_score": rdd_sil,
-                                "mllib_silhouette_score": mllib_sil,
-                            }
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("MLflow logging skipped during live stream: %s", exc)
-
-                # Cache live clusterer for interactive document clustering
-                _ACTIVE_CLUSTERER = DualDocumentClusterer(
-                    tfidf=tfidf,
-                    rdd_model=rdd_model,
-                    mllib_model=mllib_res.model,
-                    rdd_top_terms=rdd_terms,
-                    mllib_top_terms=mllib_terms,
+                elbow = compute_elbow_and_silhouette(
+                    df_58d, k_values=(2, 3, 4, 5, 6, 8, 10), max_iter=max_iter, seed=seed
                 )
 
-                safe_unpersist(rdd_preds)
-                safe_unpersist(mllib_res.predictions)
+                # 5. Projection PCA 2D + Génération du PDF
+                self._send_sse(
+                    "phase",
+                    {
+                        "phase": "PCA_AND_PDF",
+                        "progress": 93,
+                        "message": "Projection PCA 2D (58D -> 2D) et génération de kmeans_convergence_report.pdf...",
+                    },
+                )
+                pca_points, pca_centroids, explained = compute_pca_2d_projection(
+                    spark, df_58d, rdd_l2
+                )
+                safe_unpersist(df_58d)
 
-                run_key = f"run_live_{int(time.time())}"
-                full_run = {
-                    "id": run_id,
-                    "label": f"LIVE · {distance.capitalize()} (N={tfidf.num_docs:,}, K={k}, maxIter={max_iter})",
-                    "date": "Just now (Live Stream)",
-                    "numDocs": tfidf.num_docs,
-                    "numFeatures": tfidf.num_features,
-                    "numPartitions": num_partitions,
+                speedup_l2 = rdd_l2.total_time_seconds / max(mllib_time, 1e-9)
+                speedup_l1 = rdd_l1.total_time_seconds / max(mllib_time, 1e-9)
+
+                payload = {
+                    "num_docs": num_docs,
+                    "dim": 58,
                     "k": k,
-                    "maxIter": max_iter,
-                    "tol": tol,
-                    "distance": distance,
-                    "speedup": round(speedup, 2),
-                    "ariAgreement": round(ari_cross, 4),
-                    "finding": (
-                        f"Live Run (N={tfidf.num_docs:,}, K={k}, {distance}): MLlib finished in "
-                        f"{mllib_payload['time']:.2f}s ({mllib_payload['iterations']} iters) vs Custom RDD in "
-                        f"{rdd_payload['time']:.2f}s ({rdd_payload['iterations']} iters) — {speedup:.2f}× speedup, "
-                        f"Silhouette {rdd_payload['silhouette']:.4f} (RDD) vs {mllib_payload['silhouette']:.4f} (MLlib)."
-                    ),
-                    "rdd": rdd_payload,
-                    "mllib": mllib_payload,
+                    "max_iter": max_iter,
+                    "sample_vector_58d": sample_58d,
+                    "rdd_l2": {
+                        "distance": "Euclidean (L2)",
+                        "num_iterations": rdd_l2.num_iterations,
+                        "converged": rdd_l2.converged,
+                        "final_wsse": round(rdd_l2.final_wsse, 4),
+                        "silhouette": round(rdd_l2_sil, 5),
+                        "total_time_seconds": round(rdd_l2.total_time_seconds, 3),
+                        "avg_iter_seconds": round(
+                            rdd_l2.total_time_seconds / max(rdd_l2.num_iterations, 1), 3
+                        ),
+                        "history": [asdict(h) for h in rdd_l2.history],
+                    },
+                    "rdd_l1": {
+                        "distance": "Manhattan (L1)",
+                        "num_iterations": rdd_l1.num_iterations,
+                        "converged": rdd_l1.converged,
+                        "final_wsse": round(rdd_l1.final_wsse, 4),
+                        "silhouette": round(rdd_l1_sil, 5),
+                        "total_time_seconds": round(rdd_l1.total_time_seconds, 3),
+                        "avg_iter_seconds": round(
+                            rdd_l1.total_time_seconds / max(rdd_l1.num_iterations, 1), 3
+                        ),
+                        "history": [asdict(h) for h in rdd_l1.history],
+                    },
+                    "mllib": {
+                        "init_mode": "k-means||",
+                        "num_iterations": mllib_iters,
+                        "final_wsse": round(mllib_wsse, 4),
+                        "silhouette": round(mllib_sil, 5),
+                        "total_time_seconds": round(mllib_time, 3),
+                        "avg_iter_seconds": round(mllib_time / max(mllib_iters, 1), 3),
+                    },
+                    "speedup_vs_rdd_l2": round(speedup_l2, 2),
+                    "speedup_vs_rdd_l1": round(speedup_l1, 2),
+                    "elbow_curve": [asdict(e) for e in elbow],
+                    "pca_explained_variance": explained,
+                    "pca_centroids_l2": pca_centroids,
+                    "pca_points": pca_points,
                 }
+
+                MP10_JSON.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                generate_convergence_pdf_report(payload, MP10_PDF)
+
                 self._send_sse(
                     "complete",
                     {
                         "progress": 100,
-                        "run_key": run_key,
-                        "run": full_run,
+                        "report": payload,
                         "total_stream_seconds": round(time.perf_counter() - t_start, 2),
                     },
                 )
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             logger.info("Client closed SSE stream")
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Error in live benchmark stream")
+            logger.exception("Error in live MP10 stream")
             try:
                 self._send_sse("error", {"message": str(exc)})
             except Exception:  # noqa: BLE001
@@ -465,13 +367,13 @@ class BenchmarkDashboardHandler(SimpleHTTPRequestHandler):
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description="Serve the K-Means Benchmark Frontend Dashboard")
+    ap = argparse.ArgumentParser(description="Serve the Mini-Projet 10 Benchmark Frontend")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8050)
     args = ap.parse_args(argv)
 
     server = ThreadingHTTPServer((args.host, args.port), BenchmarkDashboardHandler)
-    print(f"Benchmark Frontend Dashboard running at http://{args.host}:{args.port}")
+    print(f"Mini-Projet 10 Frontend Dashboard running at http://{args.host}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

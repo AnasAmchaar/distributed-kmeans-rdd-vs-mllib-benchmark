@@ -35,13 +35,15 @@ class MLlibKMeansResult:
     training_cost: float
 
 
-def build_mllib_kmeans(params: KMeansParams, features_col: str = FEATURES_COL) -> KMeans:
+def build_mllib_kmeans(
+    params: KMeansParams,
+    features_col: str = FEATURES_COL,
+    init_mode: str = "k-means||",
+) -> KMeans:
     """Instantiate ``pyspark.ml.clustering.KMeans`` with the shared hyper-parameters.
 
-    ``initMode="random"`` is forced (MLlib's default is ``"k-means||"``) so both
-    implementations use the *same* initialisation strategy — K random
-    documents. Note that the two engines use different RNGs, so the exact
-    seed documents differ; compare results over several seeds for rigour.
+    Defaults to ``init_mode="k-means||"`` (parallel K-Means|| initialization as
+    specified in Mini-Projet 10 Section 2); can also be set to ``"random"``.
     """
     return KMeans(
         featuresCol=features_col,
@@ -50,8 +52,8 @@ def build_mllib_kmeans(params: KMeansParams, features_col: str = FEATURES_COL) -
         maxIter=params.max_iter,
         tol=params.tol,
         seed=params.seed,
-        initMode="random",
-        distanceMeasure=params.distance_measure,
+        initMode=init_mode,
+        distanceMeasure=params.mllib_distance,
     )
 
 

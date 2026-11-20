@@ -80,23 +80,31 @@ def closest_center(
     center_sq_norms: FloatArray,
     distance_measure: str,
 ) -> tuple[int, float]:
-    """Assign ``vector`` to its nearest centroid.
+    """Assign ``vector`` to its nearest centroid under L2, L1 (Manhattan), or Cosine.
 
-    Euclidean uses the expansion ``||x-c||^2 = ||x||^2 - 2 x.c + ||c||^2``;
-    ``||c||^2`` is pre-computed once per iteration on the driver and broadcast,
-    so the per-document cost is a single sparse gather-dot ``O(K * nnz)``.
-    Cosine assumes the centroids are already unit-norm (see :func:`centroid`).
+    * Euclidean (L2): ``||x-c||^2 = ||x||^2 - 2 x.c + ||c||^2`` (fast sparse dot).
+    * Manhattan (L1): selects nearest centroid by ``||x - c_k||_1`` and returns
+      squared Euclidean error ``||x - c_best||_2^2`` as the WSSE contribution so
+      WSSE convergence curves are directly comparable across L1 and L2.
+    * Cosine: ``1 - cos(x, c)``.
 
     Args:
         vector: Document vector (sparse or dense, length ``D``).
         centers: ``float64[K, D]``.
         center_sq_norms: ``float64[K]`` — ``||c_k||^2``.
-        distance_measure: ``"euclidean"`` or ``"cosine"``.
+        distance_measure: ``"euclidean"`` (L2), ``"manhattan"`` (L1), or ``"cosine"``.
 
     Returns:
-        ``(best_index, cost)`` where cost is the squared Euclidean distance or
-        the cosine distance ``1 - cos(x, c)`` to the chosen centroid.
+        ``(best_index, wsse_or_cost)``.
     """
+    if distance_measure == "manhattan":
+        x_dense = to_dense(vector, centers.shape[1])
+        diff = centers - x_dense
+        l1_dists = np.sum(np.abs(diff), axis=1)
+        best = int(np.argmin(l1_dists))
+        wsse = float(np.dot(diff[best], diff[best]))
+        return best, wsse
+
     dots = dot_all(centers, vector)
     x_sq = squared_norm(vector)
     if distance_measure == "cosine":
@@ -140,10 +148,12 @@ def centroid(vector_sum: FloatArray, count: float, distance_measure: str) -> Flo
 def center_shift(old: FloatArray, new: FloatArray, distance_measure: str) -> float:
     """Movement of a centroid between two iterations.
 
-    Euclidean: L2 distance ``||old - new||``. Cosine: ``1 - cos(old, new)``.
-    Comparing this value to ``tol`` reproduces MLlib's ``isCenterConverged``.
+    Euclidean (L2): ``||old - new||_2``. Manhattan (L1): ``||old - new||_1``.
+    Cosine: ``1 - cos(old, new)``.
     """
     if distance_measure == "cosine":
         denom = np.linalg.norm(old) * np.linalg.norm(new)
         return 0.0 if denom == 0.0 else float(1.0 - np.dot(old, new) / denom)
+    if distance_measure == "manhattan":
+        return float(np.sum(np.abs(old - new)))
     return float(np.linalg.norm(old - new))
