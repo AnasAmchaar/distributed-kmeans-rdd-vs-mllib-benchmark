@@ -51,16 +51,35 @@ def safe_unpersist(df: DataFrame) -> None:
 
 
 def _ensure_local_windows_hadoop() -> None:
-    """Configure a fallback HADOOP_HOME on Windows if ``winutils.exe`` is present."""
+    """Configure a fallback HADOOP_HOME and JDK 17 on Windows when present."""
     if os.name != "nt":
         return
+    # Spark 3.5 requires Java 11/17 (Java 24+ removed Subject.getSubject).
+    java_home = os.environ.get("JAVA_HOME", "")
+    if not java_home or "jdk-25" in java_home.lower() or "jdk-24" in java_home.lower():
+        scratch_jdk = next(
+            Path.home().glob(".gemini/antigravity/brain/*/scratch/jdk17/jdk-*"), None
+        )
+        for jdk_candidate in (
+            Path(os.environ["LOCAL_JAVA_HOME"]) if "LOCAL_JAVA_HOME" in os.environ else None,
+            scratch_jdk,
+        ):
+            if jdk_candidate and (jdk_candidate / "bin" / "java.exe").exists():
+                os.environ["JAVA_HOME"] = str(jdk_candidate)
+                os.environ["PATH"] = f"{jdk_candidate / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"
+                break
+
     hadoop_home = os.environ.get("HADOOP_HOME")
     if hadoop_home and (Path(hadoop_home) / "bin" / "winutils.exe").exists():
         return
+    scratch_hadoop = next(
+        Path.home().glob(".gemini/antigravity/brain/*/scratch/hadoop"), None
+    )
     for candidate in (
         Path(os.environ["LOCAL_HADOOP_HOME"]) if "LOCAL_HADOOP_HOME" in os.environ else None,
         Path("C:/hadoop"),
         Path.home() / ".hadoop",
+        scratch_hadoop,
     ):
         if candidate and (candidate / "bin" / "winutils.exe").exists():
             os.environ["HADOOP_HOME"] = str(candidate)

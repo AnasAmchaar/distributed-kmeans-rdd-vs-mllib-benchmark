@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>K-Means Distributed Benchmark — RDD MapReduce vs PySpark MLlib</title>
+  <title>K-Means Distributed Benchmark — Live Streaming Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,10 +29,6 @@
       --border: #e4e4e7;
       --text: #09090b;
       --muted: #71717a;
-      --mllib: #2563eb;
-      --mllib-soft: rgba(37, 99, 235, 0.12);
-      --rdd: #10b981;
-      --rdd-soft: rgba(16, 185, 129, 0.12);
     }
     html.dark {
       --bg: #09090b;
@@ -41,10 +37,6 @@
       --border: #1e1e24;
       --text: #fafafa;
       --muted: #a1a1aa;
-      --mllib: #3b82f6;
-      --mllib-soft: rgba(59, 130, 246, 0.15);
-      --rdd: #10b981;
-      --rdd-soft: rgba(16, 185, 129, 0.15);
     }
     body {
       background-color: var(--bg);
@@ -61,11 +53,24 @@
       border-color: rgba(113, 113, 122, 0.45);
     }
     .tabular { font-variant-numeric: tabular-nums; }
+    @keyframes pulseRing {
+      0% { transform: scale(0.95); opacity: 0.9; }
+      70% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .pulse-dot::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 9999px;
+      background-color: #10b981;
+      animation: pulseRing 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
   </style>
 </head>
 <body class="min-h-screen antialiased selection:bg-blue-600 selection:text-white">
 
-  <!-- Top Navigation Chrome (Minimal, Zinc Design System) -->
+  <!-- Top Navigation Chrome -->
   <header class="sticky top-0 z-30 backdrop-blur-md bg-[var(--bg)]/85 border-b border-[var(--border)]">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">
@@ -75,11 +80,12 @@
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-sm sm:text-base font-semibold tracking-tight">Distributed Document Clustering Benchmark</h1>
-            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-blue-500/10 text-blue-500 border border-blue-500/20">
-              Spark 3.5.9 · MLflow
+            <span id="liveStatusPill" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-blue-500/10 text-blue-500 border border-blue-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+              <span>Spark 3.5.9 · Ready</span>
             </span>
           </div>
-          <p class="text-xs text-[var(--muted)]">From-Scratch PySpark RDD MapReduce vs. MLlib DataFrame API (TF-IDF Sparse Vectors)</p>
+          <p class="text-xs text-[var(--muted)]">From-Scratch PySpark RDD MapReduce vs. MLlib DataFrame API (Real-Time SSE Telemetry)</p>
         </div>
       </div>
 
@@ -105,6 +111,94 @@
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
+    <!-- LIVE BENCHMARK LAUNCHER & REAL-TIME STREAMING BAR -->
+    <section class="surface-card p-4 sm:p-5 space-y-4 border-blue-500/30">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="space-y-0.5">
+          <div class="flex items-center gap-2">
+            <span id="streamDot" class="relative w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+            <h2 class="text-sm font-semibold">Run Live Spark Benchmark (Real-Time Iteration Stream)</h2>
+            <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--card-alt)] border border-[var(--border)] text-[var(--muted)]">SSE /api/benchmark/stream</span>
+          </div>
+          <p class="text-xs text-[var(--muted)]">
+            Configure hyperparameters and trigger a live PySpark run — each Lloyd MapReduce iteration streams its cost, centroid shift, and timing directly into the graphs below.
+          </p>
+        </div>
+
+        <!-- Hyperparameter Controls + Run / Stop Button -->
+        <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+          <label class="flex items-center gap-1.5 bg-[var(--card-alt)] border border-[var(--border)] rounded-lg px-2.5 py-1.5">
+            <span class="text-[var(--muted)]">Docs N:</span>
+            <select id="paramDocs" class="bg-transparent focus:outline-none cursor-pointer">
+              <option value="500">500</option>
+              <option value="800" selected>800</option>
+              <option value="1200">1,200</option>
+              <option value="2000">2,000</option>
+            </select>
+          </label>
+
+          <label class="flex items-center gap-1.5 bg-[var(--card-alt)] border border-[var(--border)] rounded-lg px-2.5 py-1.5">
+            <span class="text-[var(--muted)]">K:</span>
+            <select id="paramK" class="bg-transparent focus:outline-none cursor-pointer">
+              <option value="4">4</option>
+              <option value="6">6</option>
+              <option value="8" selected>8</option>
+              <option value="12">12</option>
+            </select>
+          </label>
+
+          <label class="flex items-center gap-1.5 bg-[var(--card-alt)] border border-[var(--border)] rounded-lg px-2.5 py-1.5">
+            <span class="text-[var(--muted)]">maxIter:</span>
+            <select id="paramIter" class="bg-transparent focus:outline-none cursor-pointer">
+              <option value="4">4</option>
+              <option value="6" selected>6</option>
+              <option value="8">8</option>
+              <option value="10">10</option>
+            </select>
+          </label>
+
+          <label class="flex items-center gap-1.5 bg-[var(--card-alt)] border border-[var(--border)] rounded-lg px-2.5 py-1.5">
+            <span class="text-[var(--muted)]">Dist:</span>
+            <select id="paramDist" class="bg-transparent focus:outline-none cursor-pointer">
+              <option value="euclidean" selected>euclidean</option>
+              <option value="cosine">cosine</option>
+            </select>
+          </label>
+
+          <button id="runLiveBtn" type="button"
+            class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-sans font-medium text-xs transition flex items-center gap-1.5 shadow-sm">
+            <span id="runLiveIcon">▶</span>
+            <span id="runLiveText">Run Live Benchmark</span>
+          </button>
+
+          <button id="stopLiveBtn" type="button"
+            class="hidden px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 font-sans font-medium text-xs transition">
+            ■ Stop
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Streaming Progress Bar + Phase Stepper + Live Event Feed -->
+      <div id="liveProgressPanel" class="pt-3 border-t border-[var(--border)] space-y-2.5">
+        <div class="flex items-center justify-between text-xs font-mono">
+          <div class="flex items-center gap-2">
+            <span id="streamPhaseBadge" class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">IDLE</span>
+            <span id="streamStatusMsg" class="text-[var(--muted)]">Click "▶ Run Live Benchmark" to stream real-time Spark MapReduce iterations.</span>
+          </div>
+          <span id="streamPctText" class="tabular font-semibold text-blue-500">100%</span>
+        </div>
+
+        <div class="w-full h-2 rounded-full bg-[var(--card-alt)] overflow-hidden">
+          <div id="streamProgressBar" class="h-full bg-gradient-to-r from-emerald-500 to-blue-500 rounded-full transition-all duration-300" style="width: 100%"></div>
+        </div>
+
+        <!-- Collapsible Live Event Log Ticker -->
+        <div id="liveLogTicker" class="max-h-24 overflow-y-auto rounded-lg bg-[var(--card-alt)] border border-[var(--border)] px-3 py-2 font-mono text-[11px] space-y-1 text-[var(--muted)]">
+          <div>[Ready] Connected to local benchmark server · 3 historical MLflow runs loaded.</div>
+        </div>
+      </div>
+    </section>
+
     <!-- IBCS Message-in-Title Banner + Legend -->
     <section class="surface-card p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div class="space-y-1">
@@ -129,7 +223,7 @@
       </div>
     </section>
 
-    <!-- Row 1: 4 Stratified Headline KPI Cards (IBCS Compliant: Value, Unit, Delta, Provenance) -->
+    <!-- Row 1: 4 Stratified Headline KPI Cards -->
     <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <!-- KPI 1: Speedup -->
       <div class="surface-card p-5 flex flex-col justify-between space-y-3">
@@ -140,7 +234,7 @@
         <div>
           <div class="flex items-baseline gap-2">
             <span id="kpiSpeedup" class="text-2xl sm:text-3xl font-bold font-mono tabular text-blue-500">41.25×</span>
-            <span class="text-xs font-mono text-emerald-500">faster in JVM</span>
+            <span id="kpiSpeedupTag" class="text-xs font-mono text-emerald-500">faster in JVM</span>
           </div>
           <p id="kpiTimeSub" class="text-xs font-mono text-[var(--muted)] mt-1 tabular">
             MLlib: 2.202s (8 it) · RDD: 90.823s (8 it)
@@ -169,7 +263,7 @@
         </div>
         <div class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--muted)] font-mono">
           <span>Source: ClusteringEvaluator</span>
-          <span>K = 8 clusters</span>
+          <span id="kpiKTag">K = 8 clusters</span>
         </div>
       </div>
 
@@ -211,7 +305,7 @@
         </div>
         <div class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--muted)] font-mono">
           <span>Source: Spark REST /api/v1</span>
-          <span>P = 4 partitions</span>
+          <span id="kpiPartTag">P = 4 partitions</span>
         </div>
       </div>
     </section>
@@ -219,12 +313,17 @@
     <!-- Row 2: Primary Charts (Convergence Trajectory + Execution/Shuffle Comparison) -->
     <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-      <!-- Left (7 cols): Per-Iteration Lloyd Convergence Chart -->
+      <!-- Left (7 cols): Per-Iteration Lloyd Convergence Chart (Updates Live as Iterations Stream!) -->
       <div class="surface-card p-5 lg:col-span-7 flex flex-col justify-between space-y-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 class="text-sm font-semibold">Lloyd MapReduce Convergence Trajectory (Per-Iteration Telemetry)</h3>
-            <p class="text-xs text-[var(--muted)]">Monotonic reduction of within-cluster objective &amp; centroid shift ||C_t - C_{t-1}|| across RDD MapReduce steps</p>
+            <div class="flex items-center gap-2">
+              <h3 class="text-sm font-semibold">Lloyd MapReduce Convergence Trajectory</h3>
+              <span id="chartLiveBadge" class="hidden px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 animate-pulse">
+                ● STREAMING STEPS
+              </span>
+            </div>
+            <p class="text-xs text-[var(--muted)]">Real-time within-cluster objective &amp; centroid shift ||C_t - C_{t-1}|| streamed per RDD MapReduce step</p>
           </div>
           <div class="inline-flex rounded-lg p-0.5 bg-[var(--card-alt)] border border-[var(--border)] text-xs font-mono">
             <button type="button" data-metric="cost" class="conv-tab px-2.5 py-1 rounded-md bg-blue-600 text-white transition">
@@ -251,7 +350,7 @@
         </div>
       </div>
 
-      <!-- Right (5 cols): Side-by-Side Engine Comparison Bars (Time, Shuffle, Tasks, Quality) -->
+      <!-- Right (5 cols): Side-by-Side Engine Comparison Bars -->
       <div class="surface-card p-5 lg:col-span-5 flex flex-col justify-between space-y-4">
         <div class="flex items-start justify-between gap-2">
           <div>
@@ -273,13 +372,13 @@
       </div>
     </section>
 
-    <!-- Row 3: Interactive Dual-Engine Document Clusterer (Use Both Approaches to Cluster Any Document) -->
+    <!-- Row 3: Interactive Dual-Engine Document Clusterer -->
     <section class="surface-card p-5 space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
         <div>
           <div class="flex items-center gap-2">
             <h3 class="text-sm font-semibold">Interactive Dual-Engine Document Clusterer (RDD vs. MLlib Inference)</h3>
-            <span class="px-2 py-0.5 text-[11px] font-mono rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">Live TF-IDF + Centroid Cosine/L2 Scorer</span>
+            <span id="clusterEngineBadge" class="px-2 py-0.5 text-[11px] font-mono rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">Live TF-IDF + Centroid Cosine/L2 Scorer</span>
           </div>
           <p class="text-xs text-[var(--muted)] mt-0.5">
             Type or pick any technical document below to tokenize, compute L2-normalized TF-IDF, and assign it with both <code class="font-mono">CustomRDDKMeans</code> and <code class="font-mono">PySpark MLlib KMeans</code>.
@@ -312,7 +411,7 @@
           <div id="matchedTokensBox" class="flex flex-wrap gap-1.5 pt-1"></div>
         </div>
 
-        <!-- Side-by-Side Assignment Result Cards + Similarity Bars across all 8 Centroids -->
+        <!-- Side-by-Side Assignment Result Cards -->
         <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <!-- RDD Assignment Card -->
           <div class="rounded-xl p-4 bg-[var(--card-alt)] border border-emerald-500/30 space-y-3">
@@ -349,7 +448,7 @@
       <div class="surface-card p-5 lg:col-span-7 space-y-3 overflow-x-auto">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-semibold">Discovered Clusters &amp; Top Centroid Vocabulary (K = 8)</h3>
+            <h3 class="text-sm font-semibold">Discovered Clusters &amp; Top Centroid Vocabulary</h3>
             <p class="text-xs text-[var(--muted)]">Highest-weight TF-IDF features extracted from <code class="font-mono">CountVectorizerModel.vocabulary</code></p>
           </div>
           <span class="text-xs font-mono text-[var(--muted)]">L2-Normalized Centroids</span>
@@ -393,13 +492,11 @@
 
   <script>
     // =========================================================================
-    // Real Telemetry Extracted from Workspace mlflow.db (3 Complete Runs)
+    // Historical MLflow Runs + Dynamic Live Runs Store
     // =========================================================================
     const BENCHMARK_RUNS = {
       run_equal_8v8: {
         id: "6403a20f8eaf40438456476f9883dcb2",
-        rddRunId: "c45bf6e541524938a3ea5526e184dab9",
-        mllibRunId: "f44add3aae244babaca04db0b5646fa0",
         label: "Run #3 · Equal-Iter 8v8 (Euclidean, N=1,000)",
         date: "Nov 19, 2026",
         numDocs: 1000,
@@ -457,8 +554,6 @@
       },
       run_cosine_1500: {
         id: "af6dc085dc6a45718e862677f190121d",
-        rddRunId: "98628a2f13fe4873875378fab01c4eb4",
-        mllibRunId: "bd98ab0a92d74fa1a90384c2264c8bac",
         label: "Run #2 · Spherical Cosine (Cosine, N=1,500)",
         date: "Nov 08, 2026",
         numDocs: 1500,
@@ -516,8 +611,6 @@
       },
       run_euclid_1500: {
         id: "fc664abe11654fc5a5db7e7ebe9af225",
-        rddRunId: "36ed6e12da1642e7bbe92ddd74f369d5",
-        mllibRunId: "055da43216244692b25dfb90e7e1f670",
         label: "Run #1 · 10-Iter Benchmark (Euclidean, N=1,500)",
         date: "Nov 08, 2026",
         numDocs: 1500,
@@ -577,7 +670,6 @@
       }
     };
 
-    // 8 Discovered Technical Clusters & Vocabulary Profiles
     const TOPIC_CLUSTERS = [
       { id: 0, mllibId: 3, name: "Databases & SQL",     rddCount: 126, mllibCount: 125, terms: ["sql", "postgres", "query", "index", "transaction", "acid", "btree", "schema", "table", "join", "deadlock", "optimizer", "replication", "shard", "oltp", "columnar"] },
       { id: 1, mllibId: 6, name: "Cloud & Kubernetes",  rddCount: 124, mllibCount: 127, terms: ["kubernetes", "docker", "aws", "container", "terraform", "pod", "autoscaling", "helm", "serverless", "lambda", "ingress", "vpc", "azure", "gcp", "istio", "cluster"] },
@@ -600,35 +692,228 @@
     let activeRunKey = "run_equal_8v8";
     let activeConvMetric = "cost";
     let useLogScale = false;
+    let activeEventSource = null;
 
-    const fmtBytes = (b) => b >= 1e6 ? (b / 1e6).toFixed(2) + " MB" : (b / 1e3).toFixed(1) + " KB";
+    const fmtBytes = (b) => !b ? "0 KB" : (b >= 1e6 ? (b / 1e6).toFixed(2) + " MB" : (b / 1e3).toFixed(1) + " KB");
+
+    function appendLog(msg, highlight = false) {
+      const box = document.getElementById("liveLogTicker");
+      const ts = new Date().toLocaleTimeString();
+      const div = document.createElement("div");
+      div.className = highlight ? "text-emerald-400 font-medium" : "text-[var(--muted)]";
+      div.textContent = `[${ts}] ${msg}`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function setStreamProgress(pct, phaseLabel, message, isStreaming = false) {
+      document.getElementById("streamPctText").textContent = `${pct}%`;
+      document.getElementById("streamProgressBar").style.width = `${pct}%`;
+      document.getElementById("streamPhaseBadge").textContent = phaseLabel;
+      document.getElementById("streamStatusMsg").textContent = message;
+      const dot = document.getElementById("streamDot");
+      const badge = document.getElementById("chartLiveBadge");
+      if (isStreaming) {
+        dot.classList.add("pulse-dot");
+        badge.classList.remove("hidden");
+      } else {
+        dot.classList.remove("pulse-dot");
+        badge.classList.add("hidden");
+      }
+    }
+
+    // =========================================================================
+    // Live Server-Sent Events (SSE) Benchmark Execution
+    // =========================================================================
+    function startLiveBenchmarkStream() {
+      if (activeEventSource) {
+        activeEventSource.close();
+        activeEventSource = null;
+      }
+
+      const numDocs = Number(document.getElementById("paramDocs").value);
+      const k = Number(document.getElementById("paramK").value);
+      const maxIter = Number(document.getElementById("paramIter").value);
+      const distance = document.getElementById("paramDist").value;
+
+      // Create an in-progress live run entry so charts update on every single SSE frame
+      const liveKey = "run_streaming_now";
+      BENCHMARK_RUNS[liveKey] = {
+        id: "streaming_in_progress",
+        label: `● LIVE STREAM · ${distance} (N=${numDocs}, K=${k})`,
+        date: "Streaming now...",
+        numDocs: numDocs,
+        numFeatures: 268,
+        numPartitions: 4,
+        k: k,
+        maxIter: maxIter,
+        tol: 1e-4,
+        distance: distance,
+        speedup: 0.0,
+        ariAgreement: 0.0,
+        finding: `Streaming live PySpark benchmark (N=${numDocs.toLocaleString()} docs, K=${k} clusters, maxIter=${maxIter}, ${distance})...`,
+        rdd: {
+          time: 0.0, iterations: 0, converged: false, silhouette: 0.0, cost: 0.0, ariTruth: 0.0,
+          shuffleRead: 0, shuffleWrite: 0, inputBytes: 0, executorRunMs: 0, executorCpuMs: 0, gcMs: 0,
+          stages: 0, tasks: 0, history: []
+        },
+        mllib: {
+          time: 0.0, iterations: 0, converged: false, silhouette: 0.0, cost: 0.0, ariTruth: 0.0,
+          shuffleRead: 0, shuffleWrite: 0, inputBytes: 0, executorRunMs: 0, executorCpuMs: 0, gcMs: 0,
+          stages: 0, tasks: 0
+        }
+      };
+      activeRunKey = liveKey;
+
+      // Toggle UI buttons
+      document.getElementById("runLiveBtn").classList.add("opacity-60", "pointer-events-none");
+      document.getElementById("runLiveText").textContent = "Streaming...";
+      document.getElementById("stopLiveBtn").classList.remove("hidden");
+      document.getElementById("liveLogTicker").innerHTML = "";
+      document.getElementById("liveStatusPill").innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span><span>Spark 3.5.9 · Streaming Live</span>`;
+
+      setStreamProgress(4, "CONNECTING", "Opening real-time SSE stream to PySpark backend...", true);
+      appendLog(`Starting live benchmark: N=${numDocs}, K=${k}, maxIter=${maxIter}, distance=${distance}`, true);
+      renderAll();
+
+      const qs = new URLSearchParams({ num_docs: numDocs, k: k, max_iter: maxIter, distance: distance });
+      const es = new EventSource(`/api/benchmark/stream?${qs.toString()}`);
+      activeEventSource = es;
+
+      es.addEventListener("phase", (e) => {
+        const d = JSON.parse(e.data);
+        setStreamProgress(d.progress, d.phase.toUpperCase(), d.message, true);
+        appendLog(d.message);
+      });
+
+      es.addEventListener("tfidf_done", (e) => {
+        const d = JSON.parse(e.data);
+        const run = BENCHMARK_RUNS[liveKey];
+        run.numDocs = d.num_docs;
+        run.numFeatures = d.num_features;
+        run.numPartitions = d.num_partitions;
+        setStreamProgress(d.progress, "TFIDF_CACHED", d.message, true);
+        appendLog(d.message, true);
+        renderAll();
+      });
+
+      es.addEventListener("rdd_iteration", (e) => {
+        const d = JSON.parse(e.data);
+        const run = BENCHMARK_RUNS[liveKey];
+        run.rdd.history.push({ iter: d.iter, cost: d.cost, shift: d.shift, seconds: d.seconds });
+        run.rdd.iterations = d.iter;
+        run.rdd.cost = d.cost;
+        run.rdd.time = d.cumulative_seconds;
+        const msg = `RDD Iteration ${d.iter}/${d.max_iter} -> Cost = ${d.cost.toFixed(3)} · Max Centroid Shift = ${d.shift.toExponential(3)} (${d.seconds.toFixed(2)}s)`;
+        setStreamProgress(d.progress, `RDD ITER ${d.iter}/${d.max_iter}`, msg, true);
+        appendLog(msg, true);
+        renderAll();
+      });
+
+      es.addEventListener("rdd_done", (e) => {
+        const d = JSON.parse(e.data);
+        const run = BENCHMARK_RUNS[liveKey];
+        run.rdd = d.rdd;
+        const msg = `CustomRDDKMeans finished in ${d.rdd.time.toFixed(2)}s · Silhouette=${d.rdd.silhouette.toFixed(4)} · ARI=${d.rdd.ariTruth.toFixed(4)} · Shuffle=${fmtBytes(d.rdd.shuffleWrite)}`;
+        setStreamProgress(d.progress, "RDD_DONE", msg, true);
+        appendLog(msg, true);
+        renderAll();
+      });
+
+      es.addEventListener("mllib_done", (e) => {
+        const d = JSON.parse(e.data);
+        const run = BENCHMARK_RUNS[liveKey];
+        run.mllib = d.mllib;
+        run.speedup = run.rdd.time / Math.max(d.mllib.time, 0.001);
+        const msg = `PySpark MLlib finished in ${d.mllib.time.toFixed(2)}s (${d.mllib.iterations} iters) · Silhouette=${d.mllib.silhouette.toFixed(4)} · Speed-up=${run.speedup.toFixed(2)}×`;
+        setStreamProgress(d.progress, "MLLIB_DONE", msg, true);
+        appendLog(msg, true);
+        renderAll();
+      });
+
+      es.addEventListener("complete", (e) => {
+        const d = JSON.parse(e.data);
+        es.close();
+        activeEventSource = null;
+
+        delete BENCHMARK_RUNS[liveKey];
+        BENCHMARK_RUNS[d.run_key] = d.run;
+        activeRunKey = d.run_key;
+
+        // Add to dropdown selector and select it
+        const sel = document.getElementById("runSelect");
+        const opt = document.createElement("option");
+        opt.value = d.run_key;
+        opt.textContent = d.run.label;
+        sel.insertBefore(opt, sel.firstChild);
+        sel.value = d.run_key;
+
+        const msg = `Benchmark complete in ${d.total_stream_seconds}s! MLlib speed-up = ${d.run.speedup.toFixed(2)}× · Cross-Engine ARI = ${d.run.ariAgreement.toFixed(4)}`;
+        setStreamProgress(100, "COMPLETED", msg, false);
+        appendLog(msg, true);
+        finishStreamUI();
+        renderAll();
+      });
+
+      es.addEventListener("error", (e) => {
+        if (e.data) {
+          const d = JSON.parse(e.data);
+          appendLog(`Error: ${d.message}`, false);
+          setStreamProgress(100, "ERROR", d.message, false);
+        }
+        es.close();
+        activeEventSource = null;
+        finishStreamUI();
+      });
+    }
+
+    function stopLiveBenchmarkStream() {
+      if (activeEventSource) {
+        activeEventSource.close();
+        activeEventSource = null;
+      }
+      appendLog("Live stream stopped by user.");
+      setStreamProgress(100, "STOPPED", "Stream stopped.", false);
+      finishStreamUI();
+    }
+
+    function finishStreamUI() {
+      document.getElementById("runLiveBtn").classList.remove("opacity-60", "pointer-events-none");
+      document.getElementById("runLiveText").textContent = "Run Live Benchmark";
+      document.getElementById("stopLiveBtn").classList.add("hidden");
+      document.getElementById("liveStatusPill").innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span><span>Spark 3.5.9 · Ready</span>`;
+    }
 
     // =========================================================================
     // Render Dashboard State
     // =========================================================================
     function renderAll() {
       const run = BENCHMARK_RUNS[activeRunKey];
-      document.getElementById("runMetaBadge").textContent = `MLflow Run #${run.id.slice(0, 8)} · ${run.date} · N=${run.numDocs.toLocaleString()}, D=${run.numFeatures}`;
+      if (!run) return;
+
+      document.getElementById("runMetaBadge").textContent = `MLflow Run #${String(run.id).slice(0, 8)} · ${run.date} · N=${run.numDocs.toLocaleString()}, D=${run.numFeatures}`;
       document.getElementById("headlineFinding").textContent = run.finding;
 
       // KPIs
-      document.getElementById("kpiSpeedup").textContent = `${run.speedup.toFixed(2)}×`;
+      document.getElementById("kpiSpeedup").textContent = run.speedup > 0 ? `${run.speedup.toFixed(2)}×` : "…";
       document.getElementById("kpiTimeSub").textContent = `MLlib: ${run.mllib.time.toFixed(3)}s (${run.mllib.iterations} it) · RDD: ${run.rdd.time.toFixed(3)}s (${run.rdd.iterations} it)`;
       document.getElementById("kpiDistanceTag").textContent = run.distance;
+      document.getElementById("kpiKTag").textContent = `K = ${run.k} clusters`;
+      document.getElementById("kpiPartTag").textContent = `P = ${run.numPartitions} partitions`;
 
-      document.getElementById("kpiSilhouetteMllib").textContent = run.mllib.silhouette.toFixed(4);
+      document.getElementById("kpiSilhouetteMllib").textContent = run.mllib.silhouette > 0 ? run.mllib.silhouette.toFixed(4) : (run.rdd.silhouette > 0 ? run.rdd.silhouette.toFixed(4) : "…");
       const silDelta = run.rdd.silhouette - run.mllib.silhouette;
       document.getElementById("kpiSilhouetteDelta").textContent = `RDD: ${run.rdd.silhouette.toFixed(4)} (${silDelta >= 0 ? "+" : ""}${silDelta.toFixed(4)})`;
       document.getElementById("kpiCostSub").textContent = `Cost: ${run.rdd.cost.toFixed(2)} (RDD) vs ${run.mllib.cost.toFixed(2)} (MLlib)`;
 
-      document.getElementById("kpiAriRdd").textContent = run.rdd.ariTruth.toFixed(4);
+      document.getElementById("kpiAriRdd").textContent = run.rdd.ariTruth > 0 ? run.rdd.ariTruth.toFixed(4) : "…";
       document.getElementById("kpiAriMllib").textContent = `MLlib: ${run.mllib.ariTruth.toFixed(4)}`;
       document.getElementById("kpiAriAgreement").textContent = `Cross-Engine Agreement ARI: ${run.ariAgreement.toFixed(4)}`;
 
       document.getElementById("kpiShuffleRdd").textContent = fmtBytes(run.rdd.shuffleWrite);
       document.getElementById("kpiShuffleMllib").textContent = `MLlib: ${fmtBytes(run.mllib.shuffleWrite)}`;
-      const rddPerIter = run.rdd.shuffleWrite / run.rdd.iterations / 1e3;
-      const mllibPerIter = run.mllib.shuffleWrite / run.mllib.iterations / 1e3;
+      const rddPerIter = run.rdd.iterations > 0 ? run.rdd.shuffleWrite / run.rdd.iterations / 1e3 : 0;
+      const mllibPerIter = run.mllib.iterations > 0 ? run.mllib.shuffleWrite / run.mllib.iterations / 1e3 : 0;
       document.getElementById("kpiShufflePerIter").textContent = `~${rddPerIter.toFixed(1)} KB/iter (RDD) vs ~${mllibPerIter.toFixed(1)} KB/iter (MLlib)`;
 
       renderConvergenceChart(run);
@@ -637,20 +922,27 @@
     }
 
     // =========================================================================
-    // Chart 1: Interactive SVG Convergence Trajectory
+    // Chart 1: Interactive SVG Convergence Trajectory (Live-Updating)
     // =========================================================================
     function renderConvergenceChart(run) {
       const svg = document.getElementById("convergenceSvg");
-      const hist = run.rdd.history;
+      const hist = run.rdd.history || [];
       const W = 640, H = 230, padL = 58, padR = 24, padT = 20, padB = 34;
       const plotW = W - padL - padR, plotH = H - padT - padB;
+
+      if (hist.length === 0) {
+        svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" fill="var(--muted)" font-size="12" font-family="JetBrains Mono">Waiting for iteration 1 from Spark RDD MapReduce...</text>`;
+        document.getElementById("convHighlight").textContent = "Streaming initialization...";
+        return;
+      }
 
       const vals = hist.map(h => h[activeConvMetric]);
       const maxVal = Math.max(...vals) * 1.05 || 1;
       const minVal = activeConvMetric === "cost" ? Math.min(...vals) * 0.96 : 0;
       const span = Math.max(maxVal - minVal, 1e-6);
 
-      const xAt = (i) => padL + (hist.length === 1 ? plotW / 2 : (i / (hist.length - 1)) * plotW);
+      const totalSlots = Math.max(hist.length - 1, (run.maxIter || 8) - 1, 1);
+      const xAt = (i) => padL + (hist.length === 1 ? 0 : (i / totalSlots) * plotW);
       const yAt = (v) => padT + plotH - ((v - minVal) / span) * plotH;
 
       let gridHtml = "";
@@ -664,9 +956,8 @@
         `;
       }
 
-      // MLlib final reference line on cost chart
       let refLineHtml = "";
-      if (activeConvMetric === "cost") {
+      if (activeConvMetric === "cost" && run.mllib.cost > 0) {
         const yRef = Math.min(Math.max(yAt(run.mllib.cost), padT), padT + plotH);
         refLineHtml = `
           <line x1="${padL}" y1="${yRef}" x2="${W - padR}" y2="${yRef}" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="5 4" />
@@ -691,12 +982,13 @@
       hist.forEach((h, i) => {
         const cx = xAt(i), cy = yAt(h[activeConvMetric]);
         const vStr = activeConvMetric === "shift" ? h.shift.toExponential(3) : (activeConvMetric === "cost" ? h.cost.toFixed(2) : h.seconds.toFixed(2) + "s");
+        const isLatest = i === hist.length - 1;
         nodesHtml += `
           <g class="cursor-pointer group" data-idx="${i}">
             <text x="${cx}" y="${H - 10}" text-anchor="middle" fill="var(--muted)" font-size="11" font-family="JetBrains Mono">t=${h.iter}</text>
             <circle cx="${cx}" cy="${cy}" r="12" fill="transparent" />
-            <circle cx="${cx}" cy="${cy}" r="4.5" fill="#10b981" stroke="var(--card)" stroke-width="2" class="transition-transform group-hover:scale-150" />
-            <text x="${cx}" y="${cy - 10}" text-anchor="middle" fill="var(--text)" font-size="10.5" font-family="JetBrains Mono" opacity="${i === 0 || i === hist.length - 1 || i === 2 ? '1' : '0'}" class="group-hover:opacity-100 transition-opacity">${vStr}</text>
+            <circle cx="${cx}" cy="${cy}" r="${isLatest ? '5.5' : '4.5'}" fill="#10b981" stroke="var(--card)" stroke-width="2" class="transition-transform group-hover:scale-150" />
+            <text x="${cx}" y="${cy - 10}" text-anchor="middle" fill="var(--text)" font-size="10.5" font-family="JetBrains Mono" opacity="${i === 0 || isLatest || i === 2 ? '1' : '0'}" class="group-hover:opacity-100 transition-opacity">${vStr}</text>
           </g>
         `;
       });
@@ -716,9 +1008,9 @@
       `;
 
       const first = hist[0], last = hist[hist.length - 1];
-      const dropPct = (((first.cost - last.cost) / first.cost) * 100).toFixed(1);
+      const dropPct = first.cost > 0 ? (((first.cost - last.cost) / first.cost) * 100).toFixed(1) : "0.0";
       document.getElementById("convHighlight").textContent =
-        `Iter 1 → ${last.iter}: Cost ${first.cost.toFixed(1)} → ${last.cost.toFixed(1)} (-${dropPct}%) · Final Shift = ${last.shift.toExponential(2)}`;
+        `Iter 1 → ${last.iter}: Cost ${first.cost.toFixed(1)} → ${last.cost.toFixed(1)} (-${dropPct}%) · Shift = ${last.shift.toExponential(2)}`;
 
       svg.querySelectorAll("g[data-idx]").forEach(g => {
         g.addEventListener("mouseenter", () => {
@@ -733,6 +1025,8 @@
     // Chart 2: Side-by-Side Engine Bottleneck Bars
     // =========================================================================
     function renderComparisonBars(run) {
+      const rddShufIter = run.rdd.iterations > 0 ? run.rdd.shuffleWrite / run.rdd.iterations / 1024 : 0;
+      const mlShufIter = run.mllib.iterations > 0 ? run.mllib.shuffleWrite / run.mllib.iterations / 1024 : 0;
       const rows = [
         {
           label: "Wall-Clock Execution Time",
@@ -740,7 +1034,7 @@
           mllibVal: run.mllib.time,
           rddText: `${run.rdd.time.toFixed(2)} s`,
           mllibText: `${run.mllib.time.toFixed(2)} s`,
-          note: `${run.speedup.toFixed(1)}× faster in MLlib`
+          note: run.speedup > 0 ? `${run.speedup.toFixed(1)}× faster in MLlib` : "Measuring..."
         },
         {
           label: "Executor Task Run Time",
@@ -752,10 +1046,10 @@
         },
         {
           label: "Shuffle Write Volume / Iter",
-          rddVal: run.rdd.shuffleWrite / run.rdd.iterations / 1024,
-          mllibVal: run.mllib.shuffleWrite / run.mllib.iterations / 1024,
-          rddText: `${(run.rdd.shuffleWrite / run.rdd.iterations / 1024).toFixed(1)} KB`,
-          mllibText: `${(run.mllib.shuffleWrite / run.mllib.iterations / 1024).toFixed(1)} KB`,
+          rddVal: rddShufIter,
+          mllibVal: mlShufIter,
+          rddText: `${rddShufIter.toFixed(1)} KB`,
+          mllibText: `${mlShufIter.toFixed(1)} KB`,
           note: "Identical O(P·K·D) bound"
         },
         {
@@ -814,26 +1108,47 @@
     // Tables: Cluster Vocabulary & Audit Metrics
     // =========================================================================
     function renderTables(run) {
-      const scale = run.numDocs / 1000;
-      document.getElementById("clusterTableBody").innerHTML = TOPIC_CLUSTERS.map(c => `
-        <tr class="hover:bg-[var(--card-alt)]/60 transition">
-          <td class="py-2 pr-3 font-semibold text-emerald-500">#${c.id} <span class="text-[var(--muted)] font-normal">/ ML#${c.mllibId}</span></td>
-          <td class="py-2 px-3 font-sans font-medium text-[var(--text)]">${c.name}</td>
-          <td class="py-2 px-3 text-right tabular">${Math.round(c.rddCount * scale)} / ${Math.round(c.mllibCount * scale)}</td>
-          <td class="py-2 pl-3 text-[var(--muted)]">${c.terms.slice(0, 7).join(", ")}</td>
-        </tr>
-      `).join("");
+      if (run.rdd.topTerms && Object.keys(run.rdd.topTerms).length > 0) {
+        const keys = Object.keys(run.rdd.topTerms);
+        document.getElementById("clusterTableBody").innerHTML = keys.map(k => {
+          const terms = run.rdd.topTerms[k] || [];
+          const rddCnt = (run.rdd.clusterSizes && run.rdd.clusterSizes[k]) || 0;
+          const mlCnt = (run.mllib.clusterSizes && run.mllib.clusterSizes[k]) || 0;
+          return `
+            <tr class="hover:bg-[var(--card-alt)]/60 transition">
+              <td class="py-2 pr-3 font-semibold text-emerald-500">#${k}</td>
+              <td class="py-2 px-3 font-sans font-medium text-[var(--text)]">${terms.slice(0, 2).join(" / ").toUpperCase()}</td>
+              <td class="py-2 px-3 text-right tabular">${rddCnt} / ${mlCnt}</td>
+              <td class="py-2 pl-3 text-[var(--muted)]">${terms.slice(0, 7).join(", ")}</td>
+            </tr>
+          `;
+        }).join("");
+      } else {
+        const scale = run.numDocs / 1000;
+        document.getElementById("clusterTableBody").innerHTML = TOPIC_CLUSTERS.map(c => `
+          <tr class="hover:bg-[var(--card-alt)]/60 transition">
+            <td class="py-2 pr-3 font-semibold text-emerald-500">#${c.id} <span class="text-[var(--muted)] font-normal">/ ML#${c.mllibId}</span></td>
+            <td class="py-2 px-3 font-sans font-medium text-[var(--text)]">${c.name}</td>
+            <td class="py-2 px-3 text-right tabular">${Math.round(c.rddCount * scale)} / ${Math.round(c.mllibCount * scale)}</td>
+            <td class="py-2 pl-3 text-[var(--muted)]">${c.terms.slice(0, 7).join(", ")}</td>
+          </tr>
+        `).join("");
+      }
 
-      document.getElementById("auditRunId").textContent = `#${run.id.slice(0, 8)}`;
+      document.getElementById("auditRunId").textContent = `#${String(run.id).slice(0, 8)}`;
+      const shufRatio = run.mllib.shuffleWrite > 0 ? `${((run.rdd.shuffleWrite / run.mllib.shuffleWrite) * 100).toFixed(0)}%` : "…";
+      const execRatio = run.mllib.executorRunMs > 0 ? `${(run.rdd.executorRunMs / run.mllib.executorRunMs).toFixed(1)}×` : "…";
+      const costRatio = run.mllib.cost > 0 ? `${((run.rdd.cost / run.mllib.cost - 1) * 100).toFixed(1)}%` : "…";
+
       const auditRows = [
-        ["Total Execution Time", `${run.rdd.time.toFixed(3)} s`, `${run.mllib.time.toFixed(3)} s`, `${run.speedup.toFixed(2)}×`],
+        ["Total Execution Time", `${run.rdd.time.toFixed(3)} s`, `${run.mllib.time.toFixed(3)} s`, run.speedup > 0 ? `${run.speedup.toFixed(2)}×` : "…"],
         ["Lloyd Iterations", `${run.rdd.iterations}`, `${run.mllib.iterations}`, `${run.rdd.iterations - run.mllib.iterations >= 0 ? "+" : ""}${run.rdd.iterations - run.mllib.iterations}`],
         ["Silhouette Score", run.rdd.silhouette.toFixed(5), run.mllib.silhouette.toFixed(5), `${(run.rdd.silhouette - run.mllib.silhouette >= 0 ? "+" : "")}${(run.rdd.silhouette - run.mllib.silhouette).toFixed(4)}`],
-        ["Within-Cluster Cost", run.rdd.cost.toFixed(2), run.mllib.cost.toFixed(2), `${((run.rdd.cost / run.mllib.cost - 1) * 100).toFixed(1)}%`],
+        ["Within-Cluster Cost", run.rdd.cost.toFixed(2), run.mllib.cost.toFixed(2), costRatio],
         ["ARI vs Ground Truth", run.rdd.ariTruth.toFixed(4), run.mllib.ariTruth.toFixed(4), `ARI=${run.ariAgreement.toFixed(3)}`],
-        ["Shuffle Write Bytes", run.rdd.shuffleWrite.toLocaleString() + " B", run.mllib.shuffleWrite.toLocaleString() + " B", `${((run.rdd.shuffleWrite / run.mllib.shuffleWrite) * 100).toFixed(0)}%`],
-        ["Shuffle Read Bytes", run.rdd.shuffleRead.toLocaleString() + " B", run.mllib.shuffleRead.toLocaleString() + " B", `${((run.rdd.shuffleRead / run.mllib.shuffleRead) * 100).toFixed(0)}%`],
-        ["Executor Run Time", `${run.rdd.executorRunMs.toLocaleString()} ms`, `${run.mllib.executorRunMs.toLocaleString()} ms`, `${(run.rdd.executorRunMs / run.mllib.executorRunMs).toFixed(1)}×`],
+        ["Shuffle Write Bytes", run.rdd.shuffleWrite.toLocaleString() + " B", run.mllib.shuffleWrite.toLocaleString() + " B", shufRatio],
+        ["Shuffle Read Bytes", run.rdd.shuffleRead.toLocaleString() + " B", run.mllib.shuffleRead.toLocaleString() + " B", shufRatio],
+        ["Executor Run Time", `${run.rdd.executorRunMs.toLocaleString()} ms`, `${run.mllib.executorRunMs.toLocaleString()} ms`, execRatio],
         ["JVM GC Time", `${run.rdd.gcMs} ms`, `${run.mllib.gcMs} ms`, `${run.rdd.gcMs - run.mllib.gcMs} ms`],
         ["Spark Stages / Tasks", `${run.rdd.stages} / ${run.rdd.tasks}`, `${run.mllib.stages} / ${run.mllib.tasks}`, "REST /api/v1"]
       ];
@@ -848,13 +1163,12 @@
     }
 
     // =========================================================================
-    // Interactive Dual-Engine Document Clusterer (TF-IDF + L2 / Cosine Scorer)
+    // Interactive Dual-Engine Document Clusterer (Instant + Backend Spark API)
     // =========================================================================
-    function clusterCustomDocument() {
+    function clusterCustomDocument(callBackend = false) {
       const raw = document.getElementById("docInput").value || "";
       const tokens = raw.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3);
 
-      // Compute L2-normalized TF-IDF overlap against the 8 learned topic centroids
       const matchedSet = new Set();
       const scores = TOPIC_CLUSTERS.map(c => {
         let dotRdd = 0.02, dotMllib = 0.02;
@@ -915,11 +1229,31 @@
           <span class="w-11 text-right">${(s.cosMllib * 100).toFixed(0)}%</span>
         </div>
       `).join("");
+
+      if (callBackend) {
+        fetch("/api/cluster", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: raw })
+        }).then(r => r.ok ? r.json() : null).then(data => {
+          if (data && data.assignment) {
+            const a = data.assignment;
+            document.getElementById("rddPredCluster").textContent = `Cluster #${a.rdd_cluster} (Live Spark RDD)`;
+            document.getElementById("rddPredTerms").textContent = `Centroid terms: ${a.rdd_cluster_terms}`;
+            document.getElementById("mllibPredCluster").textContent = `Cluster #${a.mllib_cluster} (Live Spark MLlib)`;
+            document.getElementById("mllibPredTerms").textContent = `Centroid terms: ${a.mllib_cluster_terms}`;
+            document.getElementById("clusterEngineBadge").textContent = "Scored via Live PySpark DualDocumentClusterer";
+          }
+        }).catch(() => {});
+      }
     }
 
     // =========================================================================
     // Event Listeners
     // =========================================================================
+    document.getElementById("runLiveBtn").addEventListener("click", startLiveBenchmarkStream);
+    document.getElementById("stopLiveBtn").addEventListener("click", stopLiveBenchmarkStream);
+
     document.getElementById("runSelect").addEventListener("change", (e) => {
       activeRunKey = e.target.value;
       renderAll();
@@ -954,12 +1288,12 @@
     document.querySelectorAll(".sample-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         document.getElementById("docInput").value = SAMPLE_DOCS[Number(btn.dataset.sample)];
-        clusterCustomDocument();
+        clusterCustomDocument(false);
       });
     });
 
-    document.getElementById("clusterNowBtn").addEventListener("click", clusterCustomDocument);
-    document.getElementById("docInput").addEventListener("input", clusterCustomDocument);
+    document.getElementById("clusterNowBtn").addEventListener("click", () => clusterCustomDocument(true));
+    document.getElementById("docInput").addEventListener("input", () => clusterCustomDocument(false));
 
     document.getElementById("themeBtn").addEventListener("click", () => {
       const html = document.documentElement;
@@ -968,16 +1302,8 @@
       document.getElementById("themeLabel").textContent = isDark ? "Light" : "Dark";
     });
 
-    // Optional live sync with local Python ui_server (/api/runs)
-    fetch("/api/runs").then(r => r.ok ? r.json() : null).then(data => {
-      if (data && data.runs) {
-        Object.assign(BENCHMARK_RUNS, data.runs);
-        renderAll();
-      }
-    }).catch(() => {});
-
     renderAll();
-    clusterCustomDocument();
+    clusterCustomDocument(false);
   </script>
 </body>
 </html>
