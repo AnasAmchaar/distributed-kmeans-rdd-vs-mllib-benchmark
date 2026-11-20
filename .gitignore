@@ -34,3 +34,9 @@ derby.log
 .idea/
 .DS_Store
 Thumbs.db
+
+# Next.js frontend build & dependencies
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
