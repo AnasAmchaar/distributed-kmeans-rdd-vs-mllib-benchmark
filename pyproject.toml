@@ -18,6 +18,7 @@ dev = ["pyspark>=3.4", "mlflow>=2.10", "pytest>=8.0", "pandas>=2.0"]
 
 [project.scripts]
 kmeans-benchmark = "kmeans_benchmark.benchmark:main"
+kmeans-dashboard = "kmeans_benchmark.ui_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
