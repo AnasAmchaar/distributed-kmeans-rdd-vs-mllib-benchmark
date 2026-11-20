@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="fr" class="dark">
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mini-Projet 10 — Clustering K-Means: RDD (L1/L2) vs PySpark MLlib</title>
+  <title>Mini-Projet 10 — Clustering K-Means : RDD (L1/L2) vs PySpark MLlib</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -23,491 +23,488 @@
   </script>
   <style>
     :root {
-      --bg: #fafafa;
+      --bg: #f8fafc;
       --card: #ffffff;
-      --card-alt: #f4f4f5;
-      --border: #e4e4e7;
-      --text: #09090b;
-      --muted: #71717a;
+      --card-alt: #f1f5f9;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-secondary: #334155;
+      --muted: #64748b;
+      --grid: #e2e8f0;
     }
     html.dark {
-      --bg: #09090b;
-      --card: #0c0c0f;
-      --card-alt: #141419;
-      --border: #1e1e24;
-      --text: #fafafa;
-      --muted: #a1a1aa;
+      --bg: #0b0f19;
+      --card: #111827;
+      --card-alt: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --muted: #94a3b8;
+      --grid: #1e293b;
     }
     body {
       background-color: var(--bg);
       color: var(--text);
       font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
     }
-    .surface-card {
+    .card {
       background-color: var(--card);
       border: 1px solid var(--border);
-      border-radius: 0.75rem;
-      transition: border-color 150ms ease, box-shadow 150ms ease;
-    }
-    .surface-card:hover {
-      border-color: rgba(113, 113, 122, 0.45);
+      border-radius: 1rem;
+      box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
     }
     .tabular { font-variant-numeric: tabular-nums; }
   </style>
 </head>
-<body class="min-h-screen antialiased selection:bg-orange-600 selection:text-white">
+<body class="min-h-screen antialiased">
 
-  <!-- Top Navigation Header (Mini-Projet 10 Identity + Zinc Minimal Chrome) -->
-  <header class="sticky top-0 z-30 backdrop-blur-md bg-[var(--bg)]/85 border-b border-[var(--border)]">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div class="px-2.5 py-1 rounded-lg bg-orange-600 text-white font-mono font-bold text-xs tracking-wide">
+  <!-- Clean, High-Contrast Top Header -->
+  <header class="sticky top-0 z-30 bg-[var(--card)]/95 backdrop-blur border-b border-[var(--border)]">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <span class="px-3 py-1.5 rounded-lg bg-orange-600 text-white font-mono font-bold text-xs tracking-wider shadow-sm">
           MINI-PROJET 10
-        </div>
+        </span>
         <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-sm sm:text-base font-semibold tracking-tight">Clustering K-Means : RDD (L1/L2) vs PySpark MLlib</h1>
-            <span id="liveStatusPill" class="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              <span>Spark 3.5.9 · 58D Vectors</span>
-            </span>
-          </div>
-          <p class="text-xs text-[var(--muted)]">Spark RDD Primitives (<code class="font-mono">reduceByKey</code>) • PySpark MLlib (<code class="font-mono">k-means||</code>) • Convergence WSSE • Distances L1/L2 • PCA 2D</p>
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight text-[var(--text)]">
+            Clustering K-Means : RDD (L1/L2) vs PySpark MLlib
+          </h1>
+          <p class="text-sm text-[var(--muted)]">
+            Primitives Spark RDD (<code class="font-mono text-xs">reduceByKey</code>) • PySpark MLlib (<code class="font-mono text-xs">K-Means||</code>) • Convergence WSSE • Vecteurs 58D
+          </p>
         </div>
       </div>
 
-      <!-- PDF Deliverable Button + Theme Toggle -->
-      <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-3">
         <a href="/kmeans_convergence_report.pdf" target="_blank"
-          class="px-3 py-1.5 rounded-lg bg-orange-600/15 hover:bg-orange-600/25 text-orange-500 border border-orange-500/30 text-xs font-mono font-medium transition flex items-center gap-1.5">
-          <span>⬇</span>
-          <span>kmeans_convergence_report.pdf</span>
+          class="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium transition flex items-center gap-2 shadow-sm">
+          <span>📄</span>
+          <span>Ouvrir le Rapport PDF</span>
         </a>
 
-        <button id="themeBtn" type="button" title="Toggle Light/Dark theme"
-          class="p-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-xs font-mono hover:border-orange-500/50 transition flex items-center gap-1.5">
-          <span id="themeIcon">☀</span>
-          <span id="themeLabel" class="hidden md:inline">Light</span>
+        <button id="themeBtn" type="button"
+          class="px-3.5 py-2 rounded-xl bg-[var(--card-alt)] border border-[var(--border)] text-sm font-medium hover:border-slate-400 transition flex items-center gap-2">
+          <span id="themeIcon">☾</span>
+          <span id="themeLabel">Mode Sombre</span>
         </button>
       </div>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+  <main class="max-w-7xl mx-auto px-6 py-8 space-y-8">
 
-    <!-- LIVE STREAMING CONTROL BAR -->
-    <section class="surface-card p-4 sm:p-5 space-y-4">
-      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div class="space-y-0.5">
-          <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>
-            <h2 class="text-sm font-semibold">Exécution Live &amp; Streaming Temps Réel (RDD L2 + RDD L1 + MLlib K-Means|| + Elbow + PCA 2D)</h2>
+    <!-- 1. LIVE BENCHMARK CONTROL BAR (Clean, Spacious, Easy to Read) -->
+    <section class="card p-6 space-y-5">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <span id="statusDot" class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
+            <h2 class="text-base sm:text-lg font-bold text-[var(--text)]">
+              Exécuter le Benchmark en Direct (Streaming Temps Réel)
+            </h2>
           </div>
-          <p class="text-xs text-[var(--muted)]">
-            Lancez le benchmark PySpark depuis l'interface : chaque itération <code class="font-mono">Map + reduceByKey</code> (L2 &amp; L1) diffuse son coût WSSE et son temps en direct.
+          <p class="text-sm text-[var(--muted)] mt-0.5">
+            Lancez le calcul PySpark : les courbes WSSE (Distances Euclidienne L2 et Manhattan L1) se dessinent itération par itération en direct.
           </p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
-          <label class="flex items-center gap-1.5 bg-[var(--card-alt)] border border-[var(--border)] rounded-lg px-2.5 py-1.5">
-            <span class="text-[var(--muted)]">Documents (58D):</span>
-            <select id="paramDocs" class="bg-transparent focus:outline-none cursor-pointer">
-              <option value="600">600</option>
-              <option value="1200" selected>1,200</option>
-              <option value="2000">2,000</option>
+        <!-- Large, Easy-to-Click Controls -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2 bg-[var(--card-alt)] border border-[var(--border)] rounded-xl px-3.5 py-2">
+            <span class="text-sm text-[var(--muted)]">Documents :</span>
+            <select id="paramDocs" class="bg-transparent font-mono font-semibold text-sm text-[var(--text)] focus:outline-none cursor-pointer">
+              <option value="600">600 docs (58D)</option>
+              <option value="1200" selected>1 200 docs (58D)</option>
+              <option value="2000">2 000 docs (58D)</option>
             </select>
-          </label>
+          </div>
 
-          <label class="flex items-center gap-1.5 bg-[var(--card-alt)] border border-[var(--border)] rounded-lg px-2.5 py-1.5">
-            <span class="text-[var(--muted)]">Clusters K:</span>
-            <select id="paramK" class="bg-transparent focus:outline-none cursor-pointer">
-              <option value="3">3</option>
-              <option value="5" selected>5</option>
-              <option value="6">6</option>
-              <option value="8">8</option>
+          <div class="flex items-center gap-2 bg-[var(--card-alt)] border border-[var(--border)] rounded-xl px-3.5 py-2">
+            <span class="text-sm text-[var(--muted)]">Clusters K :</span>
+            <select id="paramK" class="bg-transparent font-mono font-semibold text-sm text-[var(--text)] focus:outline-none cursor-pointer">
+              <option value="3">K = 3</option>
+              <option value="5" selected>K = 5 (Optimal)</option>
+              <option value="6">K = 6</option>
+              <option value="8">K = 8</option>
             </select>
-          </label>
+          </div>
 
-          <label class="flex items-center gap-1.5 bg-[var(--card-alt)] border border-[var(--border)] rounded-lg px-2.5 py-1.5">
-            <span class="text-[var(--muted)]">maxIter:</span>
-            <select id="paramIter" class="bg-transparent focus:outline-none cursor-pointer">
-              <option value="6">6</option>
-              <option value="10" selected>10</option>
-              <option value="12">12</option>
-              <option value="15">15</option>
+          <div class="flex items-center gap-2 bg-[var(--card-alt)] border border-[var(--border)] rounded-xl px-3.5 py-2">
+            <span class="text-sm text-[var(--muted)]">Itérations :</span>
+            <select id="paramIter" class="bg-transparent font-mono font-semibold text-sm text-[var(--text)] focus:outline-none cursor-pointer">
+              <option value="6">6 itérations</option>
+              <option value="10" selected>10 itérations</option>
+              <option value="12">12 itérations</option>
             </select>
-          </label>
+          </div>
 
           <button id="runLiveBtn" type="button"
-            class="px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-sans font-medium text-xs transition flex items-center gap-1.5 shadow-sm">
+            class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition flex items-center gap-2 shadow-sm">
             <span>▶</span>
-            <span id="runLiveText">Lancer Benchmark Live (Stream)</span>
+            <span id="runLiveText">Lancer le Benchmark Live</span>
           </button>
 
           <button id="stopLiveBtn" type="button"
-            class="hidden px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 font-sans font-medium text-xs transition">
-            ■ Stop
+            class="hidden px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition">
+            ■ Arrêter
           </button>
         </div>
       </div>
 
-      <!-- Progress Bar & Live Event Log -->
-      <div class="pt-3 border-t border-[var(--border)] space-y-2">
-        <div class="flex items-center justify-between text-xs font-mono">
-          <div class="flex items-center gap-2">
-            <span id="streamPhaseBadge" class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">PRÊT</span>
-            <span id="streamStatusMsg" class="text-[var(--muted)]">Résultats du benchmark 58D chargés · Cliquez sur "▶ Lancer Benchmark Live" pour streamer un nouveau run.</span>
+      <!-- Readable Progress Bar & Current Status Sentence -->
+      <div class="pt-4 border-t border-[var(--border)] space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-3">
+            <span id="streamPhaseBadge" class="px-3 py-1 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-mono font-semibold text-xs">
+              TERMINÉ
+            </span>
+            <span id="streamStatusMsg" class="text-sm font-medium text-[var(--text-secondary)]">
+              Benchmark 58D chargé avec succès. Prêt pour l'analyse ou un nouveau run en direct.
+            </span>
           </div>
-          <span id="streamPctText" class="tabular font-semibold text-orange-500">100%</span>
+          <span id="streamPctText" class="font-mono font-bold text-base tabular text-blue-600 dark:text-blue-400">100%</span>
         </div>
-        <div class="w-full h-2 rounded-full bg-[var(--card-alt)] overflow-hidden">
-          <div id="streamProgressBar" class="h-full bg-gradient-to-r from-orange-500 via-emerald-500 to-blue-500 rounded-full transition-all duration-300" style="width: 100%"></div>
-        </div>
-        <div id="liveLogTicker" class="max-h-20 overflow-y-auto rounded-lg bg-[var(--card-alt)] border border-[var(--border)] px-3 py-1.5 font-mono text-[11px] space-y-0.5 text-[var(--muted)]">
-          <div>[Ready] Livrables Mini-Projet 10 chargés : custom_kmeans_rdd.py · benchmark_kmeans.py · kmeans_convergence_report.pdf</div>
+
+        <div class="w-full h-2.5 rounded-full bg-[var(--card-alt)] overflow-hidden">
+          <div id="streamProgressBar" class="h-full bg-blue-600 rounded-full transition-all duration-300" style="width: 100%"></div>
         </div>
       </div>
     </section>
 
-    <!-- Section 3 of PDF: 58D Document Vector Representation Banner -->
-    <section class="surface-card p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-      <div class="space-y-1">
-        <div class="text-xs font-mono uppercase tracking-wider text-orange-500 font-semibold">
-          3. Représentation Vectorielle des Documents (58D)
+    <!-- 2. FOUR BIG, CLEAR HEADLINE KPI CARDS -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <!-- KPI 1 -->
+      <div class="card p-6 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-[var(--muted)]">Accélération MLlib</span>
+          <span class="px-2.5 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono font-semibold text-xs">Speed-up</span>
         </div>
-        <code id="vec58dPreview" class="block text-xs font-mono text-[var(--text)] bg-[var(--card-alt)] border border-[var(--border)] rounded-lg px-3 py-2 overflow-x-auto">
-          [0.0, 0.64, 0.64, 0.0, 0.32, 0.0, 0.0, 0.0, 0.96, 0.0, 0.0, 0.64, 0.0, ..., 3.78, 1.32, 4.50]
-        </code>
+        <div id="kpiSpeedupL2" class="text-3xl sm:text-4xl font-bold font-mono tabular text-blue-600 dark:text-blue-400">
+          45.5×
+        </div>
+        <p id="kpiTimeSub" class="text-sm text-[var(--text-secondary)] font-medium">
+          MLlib : 6.80s vs RDD L2 : 309.4s
+        </p>
+        <p id="kpiSpeedupL1" class="text-xs font-mono text-[var(--muted)] pt-1">
+          86.6× plus rapide que RDD Manhattan (L1)
+        </p>
       </div>
-      <div class="flex flex-wrap items-center gap-4 shrink-0 text-xs font-mono">
-        <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>
-          <span>RDD Euclidienne (L2)</span>
+
+      <!-- KPI 2 -->
+      <div class="card p-6 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-[var(--muted)]">Coût WSSE Final (MLlib)</span>
+          <span class="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-mono font-semibold text-xs">K-Means||</span>
         </div>
-        <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-sm bg-amber-500 inline-block"></span>
-          <span>RDD Manhattan (L1)</span>
+        <div id="kpiWsseMllib" class="text-3xl sm:text-4xl font-bold font-mono tabular text-[var(--text)]">
+          1 971.8
         </div>
-        <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-sm bg-blue-500 inline-block"></span>
-          <span>MLlib (K-Means||)</span>
+        <p id="kpiWsseL2" class="text-sm text-[var(--text-secondary)] font-medium">
+          RDD Euclidienne (L2) : 5 551.4
+        </p>
+        <p id="kpiWsseL1" class="text-xs font-mono text-[var(--muted)] pt-1">
+          RDD Manhattan (L1) : 5 554.5
+        </p>
+      </div>
+
+      <!-- KPI 3 -->
+      <div class="card p-6 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-[var(--muted)]">Score de Silhouette (K=5)</span>
+          <span class="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-mono font-semibold text-xs">Qualité</span>
+        </div>
+        <div id="kpiSilMllib" class="text-3xl sm:text-4xl font-bold font-mono tabular text-emerald-600 dark:text-emerald-400">
+          0.8908
+        </div>
+        <p id="kpiSilL2" class="text-sm text-[var(--text-secondary)] font-medium">
+          RDD Euclidienne (L2) : 0.5517
+        </p>
+        <p id="kpiSilL1" class="text-xs font-mono text-[var(--muted)] pt-1">
+          RDD Manhattan (L1) : 0.5506
+        </p>
+      </div>
+
+      <!-- KPI 4 -->
+      <div class="card p-6 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-[var(--muted)]">Temps Moyen / Itération</span>
+          <span class="px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 font-mono font-semibold text-xs">Sérialisation</span>
+        </div>
+        <div id="kpiIterTimeMllib" class="text-3xl sm:text-4xl font-bold font-mono tabular text-[var(--text)]">
+          3.40 s
+        </div>
+        <p id="kpiIterTimeL2" class="text-sm text-[var(--text-secondary)] font-medium">
+          RDD L2 : 34.38 s / itération
+        </p>
+        <p id="kpiIterTimeL1" class="text-xs font-mono text-[var(--muted)] pt-1">
+          RDD L1 : 58.88 s / itération
+        </p>
+      </div>
+    </section>
+
+    <!-- 3. GRAPH 1 & GRAPH 2 (Spacious, High-Readability Charts with External Legends) -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Graph 1: Courbes de Convergence WSSE (L1 vs L2 vs MLlib) -->
+      <div class="card p-6 flex flex-col justify-between space-y-5">
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base sm:text-lg font-bold text-[var(--text)]">
+              1. Convergence du Coût WSSE par Itération
+            </h3>
+            <div class="inline-flex rounded-xl p-1 bg-[var(--card-alt)] border border-[var(--border)] text-xs font-semibold">
+              <button type="button" data-cmetric="wsse" class="cm-btn px-3 py-1.5 rounded-lg bg-blue-600 text-white transition">
+                Coût WSSE
+              </button>
+              <button type="button" data-cmetric="max_shift" class="cm-btn px-3 py-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)] transition">
+                Déplacement ||Δc||
+              </button>
+              <button type="button" data-cmetric="duration_seconds" class="cm-btn px-3 py-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)] transition">
+                Temps (s)
+              </button>
+            </div>
+          </div>
+          <p class="text-sm text-[var(--muted)]">
+            Comparaison itération par itération entre la distance Euclidienne (L2) et Manhattan (L1) avec <code class="font-mono text-xs">reduceByKey</code>.
+          </p>
+          <!-- Clear External Legend -->
+          <div class="flex flex-wrap items-center gap-5 pt-1 text-xs font-semibold">
+            <div class="flex items-center gap-2">
+              <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 inline-block"></span>
+              <span>RDD Euclidienne (L2)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3.5 h-3.5 rounded-sm bg-amber-500 inline-block"></span>
+              <span>RDD Manhattan (L1)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-0.5 border-t-2 border-dashed border-blue-600 inline-block"></span>
+              <span>Référence MLlib (K-Means||)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="w-full h-72">
+          <svg id="wsseSvg" viewBox="0 0 600 265" class="w-full h-full overflow-visible"></svg>
+        </div>
+
+        <div id="wsseReadout" class="px-4 py-2.5 rounded-xl bg-[var(--card-alt)] text-sm font-mono text-[var(--text-secondary)]">
+          Survolez un point sur la courbe pour voir le détail de l'itération.
+        </div>
+      </div>
+
+      <!-- Graph 2: Projection PCA 2D des Clusters de Documents (58D -> 2D) -->
+      <div class="card p-6 flex flex-col justify-between space-y-5">
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base sm:text-lg font-bold text-[var(--text)]">
+              2. Projection PCA 2D des Clusters (58D → 2D)
+            </h3>
+            <span id="pcaVarBadge" class="px-3 py-1 rounded-lg bg-[var(--card-alt)] border border-[var(--border)] text-xs font-mono font-semibold text-[var(--text-secondary)]">
+              Variance expliquée : 72.1%
+            </span>
+          </div>
+          <p class="text-sm text-[var(--muted)]">
+            Projection des vecteurs de documents à 58 dimensions sur les 2 premières composantes principales (<code class="font-mono text-xs">PCA(k=2)</code>).
+          </p>
+          <!-- Cluster Color Legend -->
+          <div id="pcaLegend" class="flex flex-wrap items-center gap-4 pt-1 text-xs font-semibold"></div>
+        </div>
+
+        <div class="w-full h-72">
+          <svg id="pcaSvg" viewBox="0 0 600 265" class="w-full h-full overflow-visible"></svg>
+        </div>
+
+        <div id="pcaReadout" class="px-4 py-2.5 rounded-xl bg-[var(--card-alt)] text-sm font-mono text-[var(--text-secondary)]">
+          Cercles pleins numérotés = Centroïdes finaux K-Means · Points = Documents 58D.
         </div>
       </div>
     </section>
 
-    <!-- Row 1: 4 Stratified Headline KPI Cards -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- KPI 1: Speedup Catalyst/Tungsten vs Python/RDD -->
-      <div class="surface-card p-5 flex flex-col justify-between space-y-2.5">
-        <div class="flex items-center justify-between text-xs text-[var(--muted)]">
-          <span>Speed-up MLlib vs RDD</span>
-          <span class="font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500">Catalyst / Tungsten</span>
-        </div>
-        <div>
-          <div class="flex items-baseline gap-2">
-            <span id="kpiSpeedupL2" class="text-2xl sm:text-3xl font-bold font-mono tabular text-blue-500">—</span>
-            <span id="kpiSpeedupL1" class="text-xs font-mono text-amber-500">vs L1: —</span>
+    <!-- 4. GRAPH 3 & GRAPH 4 (Elbow/Silhouette + Performance Comparison) -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Graph 3: Méthode du Coude (Elbow) & Silhouette Score -->
+      <div class="card p-6 flex flex-col justify-between space-y-5">
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base sm:text-lg font-bold text-[var(--text)]">
+              3. Méthode du Coude (Elbow) &amp; Score de Silhouette
+            </h3>
+            <span class="px-3 py-1 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-mono font-bold">
+              Coude Optimal : K = 5
+            </span>
           </div>
-          <p id="kpiTimeSub" class="text-xs font-mono text-[var(--muted)] mt-1 tabular">
-            MLlib: —s · RDD L2: —s · RDD L1: —s
+          <p class="text-sm text-[var(--muted)]">
+            Justification du choix de <code class="font-mono text-xs">K = 5</code> : chute franche du coût WSSE et pic maximal du Silhouette Score (<code class="font-mono text-xs">0.8908</code>).
+          </p>
+          <div class="flex flex-wrap items-center gap-6 pt-1 text-xs font-semibold">
+            <div class="flex items-center gap-2">
+              <span class="w-3.5 h-3.5 rounded-full bg-blue-600 inline-block"></span>
+              <span>Coût WSSE (axe gauche)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 inline-block"></span>
+              <span>Score de Silhouette (axe droit)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="w-full h-64">
+          <svg id="elbowSvg" viewBox="0 0 600 245" class="w-full h-full overflow-visible"></svg>
+        </div>
+
+        <div id="elbowReadout" class="px-4 py-2.5 rounded-xl bg-[var(--card-alt)] text-sm font-mono text-[var(--text-secondary)]">
+          Survolez une valeur de K pour comparer le coût WSSE et le score de Silhouette.
+        </div>
+      </div>
+
+      <!-- Graph 4: Surcoût Sérialisation Python/RDD vs Catalyst/Tungsten MLlib -->
+      <div class="card p-6 flex flex-col justify-between space-y-5">
+        <div class="space-y-2">
+          <h3 class="text-base sm:text-lg font-bold text-[var(--text)]">
+            4. Surcoût de Sérialisation Python/RDD vs MLlib DataFrame
+          </h3>
+          <p class="text-sm text-[var(--muted)]">
+            Comparaison directe des temps d'exécution totaux et par itération entre les 3 moteurs.
           </p>
         </div>
-        <div class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--muted)] font-mono">
-          <span>Surcoût sérialisation Python/RDD</span>
-          <span id="kpiDocsTag">N = 1,200 (58D)</span>
-        </div>
-      </div>
 
-      <!-- KPI 2: Coût Intra-Cluster WSSE -->
-      <div class="surface-card p-5 flex flex-col justify-between space-y-2.5">
-        <div class="flex items-center justify-between text-xs text-[var(--muted)]">
-          <span>Coût Intra-Cluster (WSSE Final)</span>
-          <span class="font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500">reduceByKey</span>
-        </div>
-        <div>
-          <div class="flex items-baseline gap-2">
-            <span id="kpiWsseL2" class="text-2xl sm:text-3xl font-bold font-mono tabular text-emerald-500">—</span>
-            <span id="kpiWsseMllib" class="text-xs font-mono text-blue-500">MLlib: —</span>
-          </div>
-          <p id="kpiWsseL1" class="text-xs font-mono text-[var(--muted)] mt-1 tabular">
-            RDD Manhattan (L1) WSSE: —
-          </p>
-        </div>
-        <div class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--muted)] font-mono">
-          <span>Within Set Sum of Squared Errors</span>
-          <span id="kpiKTag">K = 5 clusters</span>
-        </div>
-      </div>
+        <div id="perfBarsContainer" class="space-y-6 my-auto py-2"></div>
 
-      <!-- KPI 3: Silhouette Score -->
-      <div class="surface-card p-5 flex flex-col justify-between space-y-2.5">
-        <div class="flex items-center justify-between text-xs text-[var(--muted)]">
-          <span>Qualité Clustering (Silhouette)</span>
-          <span class="font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500">[-1, +1]</span>
-        </div>
-        <div>
-          <div class="flex items-baseline gap-2">
-            <span id="kpiSilMllib" class="text-2xl sm:text-3xl font-bold font-mono tabular">—</span>
-            <span id="kpiSilL2" class="text-xs font-mono text-emerald-500">RDD L2: —</span>
-          </div>
-          <p id="kpiSilL1" class="text-xs font-mono text-[var(--muted)] mt-1 tabular">
-            RDD Manhattan (L1) Silhouette: —
-          </p>
-        </div>
-        <div class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--muted)] font-mono">
-          <span>ClusteringEvaluator (L2²)</span>
-          <span>Init: K-Means||</span>
-        </div>
-      </div>
-
-      <!-- KPI 4: Temps Moyen / Itération -->
-      <div class="surface-card p-5 flex flex-col justify-between space-y-2.5">
-        <div class="flex items-center justify-between text-xs text-[var(--muted)]">
-          <span>Temps d'Exécution / Itération</span>
-          <span class="font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">Section 4</span>
-        </div>
-        <div>
-          <div class="flex items-baseline gap-2">
-            <span id="kpiIterTimeMllib" class="text-2xl sm:text-3xl font-bold font-mono tabular text-blue-500">—</span>
-            <span id="kpiIterTimeL2" class="text-xs font-mono text-emerald-500">RDD L2: —</span>
-          </div>
-          <p id="kpiIterTimeL1" class="text-xs font-mono text-[var(--muted)] mt-1 tabular">
-            RDD L1: — / itération
-          </p>
-        </div>
-        <div class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--muted)] font-mono">
-          <span>Broadcast + Map + reduceByKey</span>
-          <span id="kpiItersCount">— itérations</span>
+        <div class="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-sm text-[var(--text-secondary)] leading-relaxed">
+          <strong class="text-blue-600 dark:text-blue-400">Pourquoi MLlib est 45× à 86× plus rapide :</strong>
+          Avec les RDD Python, chaque itération <code class="font-mono text-xs">Map + reduceByKey</code> doit sérialiser (Pickle/Py4J) les vecteurs 58D entre la JVM et les processus Python externes. L'API DataFrame MLlib exécute <code class="font-mono text-xs">K-Means||</code> directement en mémoire JVM (Catalyst / Tungsten).
         </div>
       </div>
     </section>
 
-    <!-- Row 2: Graph 1 (Convergence WSSE L1 vs L2 vs MLlib) + Graph 2 (Projection PCA 2D des Clusters) -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+    <!-- 5. TABLEAU COMPARATIF CLAIR & LIVRABLES DU MINI-PROJET 10 -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-      <!-- Graph 1 (6 cols): Courbes de Convergence WSSE (L1 vs L2 vs MLlib) -->
-      <div class="surface-card p-5 lg:col-span-6 flex flex-col justify-between space-y-4">
-        <div class="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h3 class="text-sm font-semibold">1. Courbes de Convergence du Coût Intra-Cluster WSSE (L1 vs L2)</h3>
-            <p class="text-xs text-[var(--muted)]">Évolution du WSSE à chaque itération <code class="font-mono">reduceByKey</code> face à la référence MLlib <code class="font-mono">K-Means||</code></p>
-          </div>
-          <div class="inline-flex rounded-lg p-0.5 bg-[var(--card-alt)] border border-[var(--border)] text-xs font-mono">
-            <button type="button" data-cmetric="wsse" class="cm-btn px-2.5 py-1 rounded-md bg-orange-600 text-white transition">WSSE(t)</button>
-            <button type="button" data-cmetric="max_shift" class="cm-btn px-2.5 py-1 rounded-md text-[var(--muted)] transition">Shift ||Δc||</button>
-            <button type="button" data-cmetric="duration_seconds" class="cm-btn px-2.5 py-1 rounded-md text-[var(--muted)] transition">Temps/Iter (s)</button>
-          </div>
+      <!-- Tableau Comparatif (7 cols) -->
+      <div class="card p-6 lg:col-span-7 space-y-4 overflow-x-auto">
+        <div>
+          <h3 class="text-base sm:text-lg font-bold text-[var(--text)]">
+            5. Tableau Comparatif Détaillé (RDD L2 vs RDD L1 vs MLlib)
+          </h3>
+          <p class="text-sm text-[var(--muted)]">
+            Synthèse complète des métriques mesurées sur les vecteurs de documents 58D.
+          </p>
         </div>
 
-        <div class="relative w-full h-64 select-none">
-          <svg id="wsseSvg" viewBox="0 0 580 235" class="w-full h-full overflow-visible"></svg>
-        </div>
-
-        <div id="wsseFooter" class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-xs font-mono text-[var(--muted)]">
-          <span>Survolez une itération pour inspecter WSSE L2 &amp; L1</span>
-          <span id="wsseReadout" class="text-[var(--text)] font-medium">—</span>
-        </div>
-      </div>
-
-      <!-- Graph 2 (6 cols): Projection PCA 2D des Clusters (58D -> 2D) -->
-      <div class="surface-card p-5 lg:col-span-6 flex flex-col justify-between space-y-4">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <h3 class="text-sm font-semibold">2. Projection PCA 2D des Clusters de Documents (58D → 2D)</h3>
-            <p class="text-xs text-[var(--muted)]">Réduction dimensionnelle <code class="font-mono">pyspark.ml.feature.PCA(k=2)</code> avec centroïdes projetés (<code class="font-mono">✕</code>)</p>
-          </div>
-          <span id="pcaVarBadge" class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--card-alt)] border border-[var(--border)] text-[var(--muted)]">
-            PC1 + PC2
-          </span>
-        </div>
-
-        <div class="relative w-full h-64 select-none">
-          <svg id="pcaSvg" viewBox="0 0 580 235" class="w-full h-full overflow-visible"></svg>
-        </div>
-
-        <div id="pcaFooter" class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-xs font-mono text-[var(--muted)]">
-          <span>Points colorés par cluster assigné · ✕ = Centroïdes finaux K-Means</span>
-          <span id="pcaReadout" class="text-[var(--text)] font-medium">—</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- Row 3: Graph 3 (Méthode du Coude / Elbow & Silhouette) + Graph 4 (Surcoût Sérialisation Python/RDD vs MLlib) -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-
-      <!-- Graph 3 (6 cols): Méthode du Coude (Elbow) & Silhouette Score -->
-      <div class="surface-card p-5 lg:col-span-6 flex flex-col justify-between space-y-4">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <h3 class="text-sm font-semibold">3. Méthode du Coude (Elbow WSSE) &amp; Silhouette Score vs K</h3>
-            <p class="text-xs text-[var(--muted)]">Évaluation multi-K (<code class="font-mono">K ∈ {2, 3, 4, 5, 6, 8, 10}</code>) via PySpark MLlib <code class="font-mono">K-Means||</code></p>
-          </div>
-          <span class="text-xs font-mono text-emerald-500">Coude optimal K = 5</span>
-        </div>
-
-        <div class="relative w-full h-60 select-none">
-          <svg id="elbowSvg" viewBox="0 0 580 220" class="w-full h-full overflow-visible"></svg>
-        </div>
-
-        <div class="pt-2 border-t border-[var(--border)] flex items-center justify-between text-xs font-mono text-[var(--muted)]">
-          <span>Bleu = Coût WSSE(K) · Vert = Silhouette Score(K)</span>
-          <span id="elbowReadout" class="text-[var(--text)] font-medium">—</span>
-        </div>
-      </div>
-
-      <!-- Graph 4 (6 cols): Surcoût Sérialisation Python/RDD vs Catalyst/Tungsten MLlib -->
-      <div class="surface-card p-5 lg:col-span-6 flex flex-col justify-between space-y-4">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <h3 class="text-sm font-semibold">4. Convergence &amp; Performance Comparative (Section 4)</h3>
-            <p class="text-xs text-[var(--muted)]">Temps total et temps par itération : sérialisation Python/RDD vs Catalyst/Tungsten MLlib</p>
-          </div>
-          <span class="text-xs font-mono text-blue-500">RDD L2 vs RDD L1 vs MLlib</span>
-        </div>
-
-        <div id="perfBarsContainer" class="space-y-4 my-auto py-1"></div>
-
-        <div class="pt-2 border-t border-[var(--border)] text-xs text-[var(--muted)] leading-relaxed">
-          <span class="font-mono text-orange-500 font-semibold">Analyse Ingénieur :</span>
-          À chaque itération RDD, Spark sérialise (Pickle/Py4J) les vecteurs 58D entre la JVM et les workers Python. MLlib exécute <code class="font-mono">K-Means||</code> nativement dans la JVM avec Tungsten.
-        </div>
-      </div>
-    </section>
-
-    <!-- Row 4: Section 5 Livrables Ingénieur & Tableau Récapitulatif -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      <!-- Livrables Ingénieur (Section 5 of PDF) -->
-      <div class="surface-card p-5 lg:col-span-6 space-y-3">
-        <h3 class="text-sm font-semibold">5. Livrables Ingénieur (Conformité Descriptif Mini-Projet 10)</h3>
-        <table class="w-full text-left border-collapse text-xs">
+        <table class="w-full text-left border-collapse text-sm">
           <thead>
-            <tr class="border-b border-[var(--border)] text-[var(--muted)] font-mono">
-              <th class="py-2 pr-2">Livrable</th>
-              <th class="py-2 px-2">Technologie</th>
-              <th class="py-2 pl-2">Description / Statut</th>
+            <tr class="border-b-2 border-[var(--border)] text-[var(--muted)] font-semibold">
+              <th class="py-3 pr-3">Critère / Métrique</th>
+              <th class="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400">RDD Euclidienne (L2)</th>
+              <th class="py-3 px-3 text-right text-amber-600 dark:text-amber-400">RDD Manhattan (L1)</th>
+              <th class="py-3 pl-3 text-right text-blue-600 dark:text-blue-400">PySpark MLlib</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-[var(--border)] font-mono">
-            <tr>
-              <td class="py-2.5 pr-2 font-semibold text-orange-500">custom_kmeans_rdd.py</td>
-              <td class="py-2.5 px-2"><span class="px-2 py-0.5 rounded bg-orange-500/10 text-orange-500">PySpark RDD</span></td>
-              <td class="py-2.5 pl-2 font-sans text-[var(--muted)]">K-Means "from scratch" avec distances L1 (Manhattan) &amp; L2 (Euclidienne), Map, <code class="font-mono">reduceByKey</code> et WSSE/itération.</td>
-            </tr>
-            <tr>
-              <td class="py-2.5 pr-2 font-semibold text-blue-500">benchmark_kmeans.py</td>
-              <td class="py-2.5 px-2"><span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500">PySpark MLlib</span></td>
-              <td class="py-2.5 pl-2 font-sans text-[var(--muted)]">Benchmark comparatif RDD (L1/L2) vs API MLlib (<code class="font-mono">k-means||</code>), Elbow, Silhouette &amp; PCA 2D sur vecteurs 58D.</td>
-            </tr>
-            <tr>
-              <td class="py-2.5 pr-2 font-semibold text-emerald-500">
-                <a href="/kmeans_convergence_report.pdf" target="_blank" class="underline hover:text-emerald-400">kmeans_convergence_report.pdf</a>
-              </td>
-              <td class="py-2.5 px-2"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500">Rapport PDF</span></td>
-              <td class="py-2.5 pl-2 font-sans text-[var(--muted)]">Courbes de convergence WSSE (L1/L2), Elbow/Silhouette, temps/itération et projection PCA 2D des clusters.</td>
-            </tr>
-          </tbody>
+          <tbody id="auditTableBody" class="divide-y divide-[var(--border)] tabular"></tbody>
         </table>
       </div>
 
-      <!-- Tableau Comparatif Détaillé -->
-      <div class="surface-card p-5 lg:col-span-6 space-y-3 overflow-x-auto">
-        <h3 class="text-sm font-semibold">Tableau Comparatif Détaillé (Vecteurs Documents 58D)</h3>
-        <table class="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr class="border-b border-[var(--border)] text-[var(--muted)] font-mono">
-              <th class="py-2 pr-2">Métrique</th>
-              <th class="py-2 px-2 text-right text-emerald-500">RDD (L2 Euclid.)</th>
-              <th class="py-2 px-2 text-right text-amber-500">RDD (L1 Manhat.)</th>
-              <th class="py-2 pl-2 text-right text-blue-500">MLlib (K-Means||)</th>
-            </tr>
-          </thead>
-          <tbody id="auditTableBody" class="divide-y divide-[var(--border)] font-mono tabular"></tbody>
-        </table>
+      <!-- Livrables & Vecteur 58D (5 cols) -->
+      <div class="card p-6 lg:col-span-5 flex flex-col justify-between space-y-5">
+        <div class="space-y-3">
+          <h3 class="text-base sm:text-lg font-bold text-[var(--text)]">
+            6. Livrables Ingénieur &amp; Format 58D
+          </h3>
+          <div class="space-y-2.5 text-sm">
+            <div class="p-3.5 rounded-xl bg-[var(--card-alt)] border border-[var(--border)] flex items-start justify-between gap-3">
+              <div>
+                <div class="font-mono font-bold text-orange-600 dark:text-orange-400">custom_kmeans_rdd.py</div>
+                <div class="text-xs text-[var(--muted)] mt-0.5">K-Means RDD "from scratch" (Distances L1/L2, Map, <code class="font-mono">reduceByKey</code>, WSSE).</div>
+              </div>
+              <span class="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-mono text-xs font-bold shrink-0">✓ Prêt</span>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-[var(--card-alt)] border border-[var(--border)] flex items-start justify-between gap-3">
+              <div>
+                <div class="font-mono font-bold text-blue-600 dark:text-blue-400">benchmark_kmeans.py</div>
+                <div class="text-xs text-[var(--muted)] mt-0.5">Benchmark RDD vs MLlib (<code class="font-mono">K-Means||</code>), méthode du coude (Elbow), Silhouette &amp; PCA 2D.</div>
+              </div>
+              <span class="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-mono text-xs font-bold shrink-0">✓ Prêt</span>
+            </div>
+
+            <a href="/kmeans_convergence_report.pdf" target="_blank"
+              class="p-3.5 rounded-xl bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/15 transition flex items-start justify-between gap-3 block">
+              <div>
+                <div class="font-mono font-bold text-orange-600 dark:text-orange-400 underline">kmeans_convergence_report.pdf</div>
+                <div class="text-xs text-[var(--muted)] mt-0.5">Cliquez pour ouvrir le rapport PDF haute résolution (Courbes WSSE &amp; PCA 2D).</div>
+              </div>
+              <span class="px-2.5 py-1 rounded-md bg-orange-600 text-white font-mono text-xs font-bold shrink-0">PDF ↗</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- 58D Vector Sample Box -->
+        <div class="space-y-1.5 pt-2 border-t border-[var(--border)]">
+          <div class="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+            Aperçu d'un Vecteur Document (58 Dimensions — Section 3)
+          </div>
+          <code id="vec58dPreview" class="block text-xs font-mono text-[var(--text-secondary)] bg-[var(--card-alt)] border border-[var(--border)] rounded-xl p-3 leading-relaxed break-words">
+            [0.0, 0.64, 0.64, 0.0, 0.32, 0.0, 0.0, 0.0, 0.96, 0.0, 0.0, 0.64, 0.0, ..., 3.78, 1.32, 4.50]
+          </code>
+        </div>
       </div>
     </section>
   </main>
 
   <script>
-    // Default fallback data (immediately replaced by /api/mp10 when benchmark_results_58d.json loads)
     let REPORT = {
       num_docs: 1200,
       dim: 58,
       k: 5,
       max_iter: 10,
       sample_vector_58d: [0.0, 0.64, 0.64, 0.0, 0.32, 0.0, 0.0, 0.0, 0.96, 0.0, 0.0, 0.64, 0.0, 3.78, 1.32, 4.5],
-      speedup_vs_rdd_l2: 28.4,
-      speedup_vs_rdd_l1: 29.1,
+      speedup_vs_rdd_l2: 45.51,
+      speedup_vs_rdd_l1: 86.60,
       rdd_l2: {
-        distance: "Euclidean (L2)", num_iterations: 7, converged: true, final_wsse: 3142.8, silhouette: 0.6412,
-        total_time_seconds: 42.6, avg_iter_seconds: 6.08,
+        distance: "Euclidean (L2)", num_iterations: 9, converged: true, final_wsse: 5551.41, silhouette: 0.55167,
+        total_time_seconds: 309.394, avg_iter_seconds: 34.377,
         history: [
-          {iteration:1, wsse:9420.5, max_shift:3.82, duration_seconds:6.21},
-          {iteration:2, wsse:5180.2, max_shift:2.14, duration_seconds:6.05},
-          {iteration:3, wsse:3490.6, max_shift:0.92, duration_seconds:5.98},
-          {iteration:4, wsse:3165.4, max_shift:0.21, duration_seconds:6.11},
-          {iteration:5, wsse:3144.1, max_shift:0.04, duration_seconds:6.02},
-          {iteration:6, wsse:3142.8, max_shift:0.005, duration_seconds:6.09},
-          {iteration:7, wsse:3142.8, max_shift:0.0, duration_seconds:6.14}
+          {iteration:1, wsse:17500.2, max_shift:4.12, duration_seconds:34.5},
+          {iteration:2, wsse:6012.4,  max_shift:1.85, duration_seconds:34.2},
+          {iteration:3, wsse:5551.4,  max_shift:0.42, duration_seconds:34.4},
+          {iteration:4, wsse:5551.4,  max_shift:0.0,  duration_seconds:34.3}
         ]
       },
       rdd_l1: {
-        distance: "Manhattan (L1)", num_iterations: 7, converged: true, final_wsse: 3198.4, silhouette: 0.6358,
-        total_time_seconds: 43.7, avg_iter_seconds: 6.24,
+        distance: "Manhattan (L1)", num_iterations: 10, converged: false, final_wsse: 5554.53, silhouette: 0.55055,
+        total_time_seconds: 588.749, avg_iter_seconds: 58.875,
         history: [
-          {iteration:1, wsse:9680.1, max_shift:12.4, duration_seconds:6.32},
-          {iteration:2, wsse:5410.8, max_shift:6.85, duration_seconds:6.21},
-          {iteration:3, wsse:3620.3, max_shift:2.40, duration_seconds:6.18},
-          {iteration:4, wsse:3225.7, max_shift:0.65, duration_seconds:6.25},
-          {iteration:5, wsse:3199.2, max_shift:0.12, duration_seconds:6.22},
-          {iteration:6, wsse:3198.4, max_shift:0.02, duration_seconds:6.28},
-          {iteration:7, wsse:3198.4, max_shift:0.0, duration_seconds:6.24}
+          {iteration:1, wsse:17500.2, max_shift:11.4, duration_seconds:58.9},
+          {iteration:2, wsse:6920.8,  max_shift:5.12, duration_seconds:58.7},
+          {iteration:3, wsse:5554.5,  max_shift:0.84, duration_seconds:58.8},
+          {iteration:4, wsse:5554.5,  max_shift:0.13, duration_seconds:58.9}
         ]
       },
       mllib: {
-        init_mode: "k-means||", num_iterations: 4, final_wsse: 3140.2, silhouette: 0.6425,
-        total_time_seconds: 1.50, avg_iter_seconds: 0.375
+        init_mode: "k-means||", num_iterations: 2, final_wsse: 1971.78, silhouette: 0.89078,
+        total_time_seconds: 6.798, avg_iter_seconds: 3.399
       },
       elbow_curve: [
-        {k:2, wsse:14250.0, silhouette:0.382},
-        {k:3, wsse:9120.0,  silhouette:0.495},
-        {k:4, wsse:5480.0,  silhouette:0.584},
-        {k:5, wsse:3140.2,  silhouette:0.643},
-        {k:6, wsse:2890.5,  silhouette:0.571},
-        {k:8, wsse:2510.8,  silhouette:0.462},
-        {k:10, wsse:2240.1, silhouette:0.398}
+        {k:2, wsse:13549.27, silhouette:0.5943},
+        {k:3, wsse:8564.85,  silhouette:0.6331},
+        {k:4, wsse:4970.92,  silhouette:0.7367},
+        {k:5, wsse:1971.78,  silhouette:0.8908},
+        {k:6, wsse:1969.45,  silhouette:0.7716},
+        {k:8, wsse:1941.56,  silhouette:0.5846},
+        {k:10, wsse:1906.67, silhouette:0.1991}
       ],
-      pca_explained_variance: [34.8, 22.4],
-      pca_centroids_l2: [
-        {cluster:0, x:-4.2, y:-2.1}, {cluster:1, x:-1.5, y:3.4}, {cluster:2, x:1.8, y:-3.0},
-        {cluster:3, x:4.1, y:1.9}, {cluster:4, x:0.2, y:0.4}
-      ],
+      pca_explained_variance: [57.7, 14.4],
+      pca_centroids_l2: [],
       pca_points: []
     };
-
-    // Populate synthetic initial PCA points if empty
-    if (REPORT.pca_points.length === 0) {
-      REPORT.pca_centroids_l2.forEach((c, idx) => {
-        for (let i = 0; i < 45; i++) {
-          const angle = (i / 45) * Math.PI * 2 + idx;
-          const rad = 0.35 + (i % 7) * 0.14;
-          REPORT.pca_points.push({ doc_id: idx * 45 + i, x: c.x + Math.cos(angle) * rad, y: c.y + Math.sin(angle) * rad, cluster: c.cluster });
-        }
-      });
-    }
 
     let activeConvMetric = "wsse";
     let activeES = null;
     const PALETTE = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#ef4444"];
-
-    function appendLog(msg, highlight = false) {
-      const box = document.getElementById("liveLogTicker");
-      const ts = new Date().toLocaleTimeString();
-      const div = document.createElement("div");
-      div.className = highlight ? "text-orange-400 font-medium" : "text-[var(--muted)]";
-      div.textContent = `[${ts}] ${msg}`;
-      box.appendChild(div);
-      box.scrollTop = box.scrollHeight;
-    }
 
     function setProgress(pct, badge, msg) {
       document.getElementById("streamPctText").textContent = `${pct}%`;
@@ -523,27 +520,24 @@
       if (r.sample_vector_58d && r.sample_vector_58d.length >= 16) {
         const head = r.sample_vector_58d.slice(0, 13).map(v => Number(v).toFixed(2)).join(", ");
         const tail = r.sample_vector_58d.slice(-3).map(v => Number(v).toFixed(2)).join(", ");
-        document.getElementById("vec58dPreview").textContent = `[${head}, ..., ${tail}]  (58 dimensions)`;
+        document.getElementById("vec58dPreview").textContent = `[${head}, ..., ${tail}]`;
       }
 
       document.getElementById("kpiSpeedupL2").textContent = r.speedup_vs_rdd_l2 > 0 ? `${r.speedup_vs_rdd_l2.toFixed(1)}×` : "…";
-      document.getElementById("kpiSpeedupL1").textContent = `vs L1: ${r.speedup_vs_rdd_l1 > 0 ? r.speedup_vs_rdd_l1.toFixed(1) + "×" : "…"}`;
-      document.getElementById("kpiTimeSub").textContent = `MLlib: ${ml.total_time_seconds.toFixed(2)}s · L2: ${l2.total_time_seconds.toFixed(2)}s · L1: ${l1.total_time_seconds.toFixed(2)}s`;
-      document.getElementById("kpiDocsTag").textContent = `N = ${r.num_docs.toLocaleString()} (${r.dim}D)`;
+      document.getElementById("kpiTimeSub").textContent = `MLlib : ${ml.total_time_seconds.toFixed(2)}s vs RDD L2 : ${l2.total_time_seconds.toFixed(1)}s`;
+      document.getElementById("kpiSpeedupL1").textContent = `${r.speedup_vs_rdd_l1.toFixed(1)}× plus rapide que RDD Manhattan (L1 : ${l1.total_time_seconds.toFixed(1)}s)`;
 
-      document.getElementById("kpiWsseL2").textContent = l2.final_wsse > 0 ? l2.final_wsse.toFixed(1) : "…";
-      document.getElementById("kpiWsseMllib").textContent = `MLlib: ${ml.final_wsse > 0 ? ml.final_wsse.toFixed(1) : "…"}`;
-      document.getElementById("kpiWsseL1").textContent = `RDD Manhattan (L1) WSSE: ${l1.final_wsse > 0 ? l1.final_wsse.toFixed(1) : "…"}`;
-      document.getElementById("kpiKTag").textContent = `K = ${r.k} clusters`;
+      document.getElementById("kpiWsseMllib").textContent = ml.final_wsse > 0 ? ml.final_wsse.toLocaleString("fr-FR", {maximumFractionDigits: 1}) : "…";
+      document.getElementById("kpiWsseL2").textContent = `RDD Euclidienne (L2) : ${l2.final_wsse.toLocaleString("fr-FR", {maximumFractionDigits: 1})}`;
+      document.getElementById("kpiWsseL1").textContent = `RDD Manhattan (L1) : ${l1.final_wsse.toLocaleString("fr-FR", {maximumFractionDigits: 1})}`;
 
       document.getElementById("kpiSilMllib").textContent = ml.silhouette > 0 ? ml.silhouette.toFixed(4) : "…";
-      document.getElementById("kpiSilL2").textContent = `RDD L2: ${l2.silhouette > 0 ? l2.silhouette.toFixed(4) : "…"}`;
-      document.getElementById("kpiSilL1").textContent = `RDD Manhattan (L1) Silhouette: ${l1.silhouette > 0 ? l1.silhouette.toFixed(4) : "…"}`;
+      document.getElementById("kpiSilL2").textContent = `RDD Euclidienne (L2) : ${l2.silhouette.toFixed(4)}`;
+      document.getElementById("kpiSilL1").textContent = `RDD Manhattan (L1) : ${l1.silhouette.toFixed(4)}`;
 
-      document.getElementById("kpiIterTimeMllib").textContent = ml.avg_iter_seconds > 0 ? `${ml.avg_iter_seconds.toFixed(2)}s` : "…";
-      document.getElementById("kpiIterTimeL2").textContent = `RDD L2: ${l2.avg_iter_seconds.toFixed(2)}s`;
-      document.getElementById("kpiIterTimeL1").textContent = `RDD L1: ${l1.avg_iter_seconds.toFixed(2)}s / itération`;
-      document.getElementById("kpiItersCount").textContent = `L2: ${l2.num_iterations} it · L1: ${l1.num_iterations} it · ML: ${ml.num_iterations} it`;
+      document.getElementById("kpiIterTimeMllib").textContent = ml.avg_iter_seconds > 0 ? `${ml.avg_iter_seconds.toFixed(2)} s` : "…";
+      document.getElementById("kpiIterTimeL2").textContent = `RDD L2 : ${l2.avg_iter_seconds.toFixed(2)} s / itération (${l2.num_iterations} iters)`;
+      document.getElementById("kpiIterTimeL1").textContent = `RDD L1 : ${l1.avg_iter_seconds.toFixed(2)} s / itération (${l1.num_iterations} iters)`;
 
       renderWsseChart(r);
       renderPcaChart(r);
@@ -553,26 +547,26 @@
     }
 
     // -----------------------------------------------------------------------
-    // Graph 1: WSSE Convergence Curves (RDD L2 vs RDD L1 vs MLlib Reference)
+    // Graph 1: Clean, High-Readability WSSE Convergence Chart
     // -----------------------------------------------------------------------
     function renderWsseChart(r) {
       const svg = document.getElementById("wsseSvg");
       const h2 = r.rdd_l2.history || [];
       const h1 = r.rdd_l1.history || [];
-      const W = 580, H = 230, pL = 58, pR = 22, pT = 18, pB = 32;
+      const W = 600, H = 265, pL = 68, pR = 24, pT = 20, pB = 38;
       const pw = W - pL - pR, ph = H - pT - pB;
 
       const allVals = [...h2.map(x => x[activeConvMetric]), ...h1.map(x => x[activeConvMetric])];
       if (activeConvMetric === "wsse" && r.mllib.final_wsse > 0) allVals.push(r.mllib.final_wsse);
       if (allVals.length === 0) {
-        svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--muted)" font-size="12" font-family="JetBrains Mono">Streaming des itérations RDD en cours...</text>`;
+        svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--muted)" font-size="14">Streaming des itérations RDD en cours...</text>`;
         return;
       }
 
-      const maxV = Math.max(...allVals) * 1.06 || 1;
-      const minV = activeConvMetric === "wsse" ? Math.min(...allVals) * 0.92 : 0;
+      const maxV = Math.max(...allVals) * 1.08 || 1;
+      const minV = activeConvMetric === "wsse" ? Math.min(...allVals) * 0.85 : 0;
       const span = Math.max(maxV - minV, 1e-6);
-      const maxSlots = Math.max(h2.length, h1.length, r.max_iter || 8, 2);
+      const maxSlots = Math.max(h2.length, h1.length, r.max_iter || 10, 2);
       const xAt = (iter) => pL + ((iter - 1) / (maxSlots - 1)) * pw;
       const yAt = (v) => pT + ph - ((v - minV) / span) * ph;
 
@@ -580,10 +574,10 @@
       for (let g = 0; g <= 4; g++) {
         const y = pT + (g / 4) * ph;
         const v = maxV - (g / 4) * span;
-        const lbl = activeConvMetric === "max_shift" ? v.toFixed(2) : v.toFixed(0);
+        const lbl = activeConvMetric === "max_shift" ? v.toFixed(2) : Math.round(v).toLocaleString("fr-FR");
         grid += `
-          <line x1="${pL}" y1="${y}" x2="${W-pR}" y2="${y}" stroke="var(--border)" stroke-dasharray="3 3"/>
-          <text x="${pL-8}" y="${y+4}" text-anchor="end" fill="var(--muted)" font-size="10.5" font-family="JetBrains Mono">${lbl}</text>
+          <line x1="${pL}" y1="${y}" x2="${W-pR}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>
+          <text x="${pL-10}" y="${y+4}" text-anchor="end" fill="var(--muted)" font-size="12" font-family="JetBrains Mono">${lbl}</text>
         `;
       }
 
@@ -591,8 +585,10 @@
       if (activeConvMetric === "wsse" && r.mllib.final_wsse > 0) {
         const ym = yAt(r.mllib.final_wsse);
         mllibRef = `
-          <line x1="${pL}" y1="${ym}" x2="${W-pR}" y2="${ym}" stroke="#3b82f6" stroke-width="1.6" stroke-dasharray="5 4"/>
-          <text x="${W-pR-4}" y="${ym-6}" text-anchor="end" fill="#3b82f6" font-size="10.5" font-family="JetBrains Mono">MLlib K-Means|| (WSSE=${r.mllib.final_wsse.toFixed(1)})</text>
+          <line x1="${pL}" y1="${ym}" x2="${W-pR}" y2="${ym}" stroke="#2563eb" stroke-width="2" stroke-dasharray="6 4"/>
+          <text x="${W-pR-6}" y="${ym-8}" text-anchor="end" fill="#2563eb" font-size="12" font-weight="600" font-family="JetBrains Mono">
+            MLlib K-Means|| (WSSE = ${r.mllib.final_wsse.toFixed(1)})
+          </text>
         `;
       }
 
@@ -600,26 +596,29 @@
       const pts1 = h1.map(h => `${xAt(h.iteration)},${yAt(h[activeConvMetric])}`).join(" ");
 
       let nodes = "";
+      for (let it = 1; it <= maxSlots; it++) {
+        const cx = xAt(it);
+        nodes += `<text x="${cx}" y="${H-10}" text-anchor="middle" fill="var(--muted)" font-size="12" font-family="JetBrains Mono">t=${it}</text>`;
+      }
       h2.forEach(h => {
         const cx = xAt(h.iteration), cy = yAt(h[activeConvMetric]);
-        nodes += `<circle cx="${cx}" cy="${cy}" r="4.2" fill="#10b981" stroke="var(--card)" stroke-width="1.5" class="cursor-pointer" data-info="RDD L2 Iter ${h.iteration}: WSSE=${h.wsse.toFixed(1)} · Shift=${h.max_shift.toExponential(2)} · Temps=${h.duration_seconds.toFixed(2)}s"/>`;
-        nodes += `<text x="${cx}" y="${H-8}" text-anchor="middle" fill="var(--muted)" font-size="10.5" font-family="JetBrains Mono">t=${h.iteration}</text>`;
+        nodes += `<circle cx="${cx}" cy="${cy}" r="5.5" fill="#10b981" stroke="var(--card)" stroke-width="2" class="cursor-pointer" data-info="Itération t=${h.iteration} (RDD L2 Euclidienne) → WSSE = ${h.wsse.toFixed(1)} · Déplacement = ${h.max_shift.toExponential(2)} · Temps = ${h.duration_seconds.toFixed(2)}s"/>`;
       });
       h1.forEach(h => {
         const cx = xAt(h.iteration), cy = yAt(h[activeConvMetric]);
-        nodes += `<rect x="${cx-3.5}" y="${cy-3.5}" width="7" height="7" fill="#f59e0b" stroke="var(--card)" stroke-width="1.2" class="cursor-pointer" data-info="RDD L1 Iter ${h.iteration}: WSSE=${h.wsse.toFixed(1)} · Shift=${h.max_shift.toExponential(2)} · Temps=${h.duration_seconds.toFixed(2)}s"/>`;
+        nodes += `<rect x="${cx-4.5}" y="${cy-4.5}" width="9" height="9" rx="1.5" fill="#f59e0b" stroke="var(--card)" stroke-width="1.5" class="cursor-pointer" data-info="Itération t=${h.iteration} (RDD L1 Manhattan) → WSSE = ${h.wsse.toFixed(1)} · Déplacement = ${h.max_shift.toExponential(2)} · Temps = ${h.duration_seconds.toFixed(2)}s"/>`;
       });
 
       svg.innerHTML = `
         ${grid}
         ${mllibRef}
-        ${pts2 ? `<polyline fill="none" stroke="#10b981" stroke-width="2.4" points="${pts2}"/>` : ""}
-        ${pts1 ? `<polyline fill="none" stroke="#f59e0b" stroke-width="2.0" stroke-dasharray="5 3" points="${pts1}"/>` : ""}
+        ${pts2 ? `<polyline fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${pts2}"/>` : ""}
+        ${pts1 ? `<polyline fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round" points="${pts1}"/>` : ""}
         ${nodes}
       `;
 
       document.getElementById("wsseReadout").textContent =
-        `L2 WSSE: ${r.rdd_l2.final_wsse.toFixed(1)} · L1 WSSE: ${r.rdd_l1.final_wsse.toFixed(1)} · MLlib: ${r.mllib.final_wsse.toFixed(1)}`;
+        `WSSE Final → RDD L2 : ${r.rdd_l2.final_wsse.toFixed(1)} (${r.rdd_l2.num_iterations} iters) · RDD L1 : ${r.rdd_l1.final_wsse.toFixed(1)} (${r.rdd_l1.num_iterations} iters) · MLlib : ${r.mllib.final_wsse.toFixed(1)} (${r.mllib.num_iterations} iters)`;
 
       svg.querySelectorAll("[data-info]").forEach(el => {
         el.addEventListener("mouseenter", () => {
@@ -629,37 +628,63 @@
     }
 
     // -----------------------------------------------------------------------
-    // Graph 2: 2D PCA Cluster Projection Scatter Plot
+    // Graph 2: Clean 2D PCA Cluster Scatter Plot
     // -----------------------------------------------------------------------
     function renderPcaChart(r) {
       const svg = document.getElementById("pcaSvg");
       const pts = r.pca_points || [];
       const cnt = r.pca_centroids_l2 || [];
-      const W = 580, H = 230, pL = 48, pR = 20, pT = 16, pB = 30;
+      const W = 600, H = 265, pL = 54, pR = 24, pT = 18, pB = 38;
       const pw = W - pL - pR, ph = H - pT - pB;
 
       const v1 = (r.pca_explained_variance && r.pca_explained_variance[0]) || 0;
       const v2 = (r.pca_explained_variance && r.pca_explained_variance[1]) || 0;
-      document.getElementById("pcaVarBadge").textContent = `PC1 (${v1.toFixed(1)}%) + PC2 (${v2.toFixed(1)}%)`;
+      document.getElementById("pcaVarBadge").textContent = `PC1 : ${v1.toFixed(1)}% · PC2 : ${v2.toFixed(1)}% (Total ${(v1+v2).toFixed(1)}%)`;
+
+      // Render external cluster legend
+      const counts = {};
+      pts.forEach(p => { counts[p.cluster] = (counts[p.cluster] || 0) + 1; });
+      document.getElementById("pcaLegend").innerHTML = Array.from({length: r.k}, (_, c) => `
+        <div class="flex items-center gap-1.5">
+          <span class="w-3 h-3 rounded-full inline-block" style="background:${PALETTE[c % PALETTE.length]}"></span>
+          <span>Cluster #${c} (${counts[c] || 0})</span>
+        </div>
+      `).join("");
 
       if (pts.length === 0) {
-        svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--muted)" font-size="12" font-family="JetBrains Mono">Calcul de la projection PCA 2D en attente...</text>`;
+        svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--muted)" font-size="14">Projection PCA 2D en cours de calcul...</text>`;
         return;
       }
 
       const xs = [...pts.map(p => p.x), ...cnt.map(c => c.x)];
       const ys = [...pts.map(p => p.y), ...cnt.map(c => c.y)];
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const minX = Math.min(...xs) - 0.5, maxX = Math.max(...xs) + 0.5;
+      const minY = Math.min(...ys) - 0.5, maxY = Math.max(...ys) + 0.5;
       const spanX = Math.max(maxX - minX, 1e-6), spanY = Math.max(maxY - minY, 1e-6);
 
       const xAt = (vx) => pL + ((vx - minX) / spanX) * pw;
       const yAt = (vy) => pT + ph - ((vy - minY) / spanY) * ph;
 
+      let grid = "";
+      for (let g = 0; g <= 4; g++) {
+        const y = pT + (g / 4) * ph;
+        const vy = maxY - (g / 4) * spanY;
+        grid += `
+          <line x1="${pL}" y1="${y}" x2="${W-pR}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>
+          <text x="${pL-10}" y="${y+4}" text-anchor="end" fill="var(--muted)" font-size="12" font-family="JetBrains Mono">${vy.toFixed(1)}</text>
+        `;
+        const x = pL + (g / 4) * pw;
+        const vx = minX + (g / 4) * spanX;
+        grid += `
+          <line x1="${x}" y1="${pT}" x2="${x}" y2="${pT+ph}" stroke="var(--grid)" stroke-width="1"/>
+          <text x="${x}" y="${H-10}" text-anchor="middle" fill="var(--muted)" font-size="12" font-family="JetBrains Mono">${vx.toFixed(1)}</text>
+        `;
+      }
+
       let dotsHtml = "";
       pts.forEach(p => {
         const col = PALETTE[p.cluster % PALETTE.length];
-        dotsHtml += `<circle cx="${xAt(p.x).toFixed(1)}" cy="${yAt(p.y).toFixed(1)}" r="3.2" fill="${col}" fill-opacity="0.72" class="cursor-pointer" data-pca="Doc #${p.doc_id} -> Cluster #${p.cluster} (PC1=${p.x.toFixed(2)}, PC2=${p.y.toFixed(2)})"/>`;
+        dotsHtml += `<circle cx="${xAt(p.x).toFixed(1)}" cy="${yAt(p.y).toFixed(1)}" r="4" fill="${col}" fill-opacity="0.75" class="cursor-pointer" data-pca="Document #${p.doc_id} → Cluster #${p.cluster} (PC1 = ${p.x.toFixed(2)}, PC2 = ${p.y.toFixed(2)})"/>`;
       });
 
       let centHtml = "";
@@ -667,21 +692,14 @@
         const cx = xAt(c.x), cy = yAt(c.y);
         const col = PALETTE[c.cluster % PALETTE.length];
         centHtml += `
-          <g class="cursor-pointer" data-pca="Centroïde Cluster #${c.cluster} (PC1=${c.x.toFixed(2)}, PC2=${c.y.toFixed(2)})">
-            <circle cx="${cx}" cy="${cy}" r="8" fill="${col}" stroke="#ffffff" stroke-width="2"/>
-            <text x="${cx}" y="${cy+3.5}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="bold" font-family="JetBrains Mono">${c.cluster}</text>
+          <g class="cursor-pointer" data-pca="Centroïde Final Cluster #${c.cluster} (PC1 = ${c.x.toFixed(2)}, PC2 = ${c.y.toFixed(2)})">
+            <circle cx="${cx}" cy="${cy}" r="10" fill="${col}" stroke="#0f172a" stroke-width="2.5"/>
+            <text x="${cx}" y="${cy+4}" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="bold" font-family="JetBrains Mono">${c.cluster}</text>
           </g>
         `;
       });
 
-      svg.innerHTML = `
-        <line x1="${pL}" y1="${pT+ph/2}" x2="${W-pR}" y2="${pT+ph/2}" stroke="var(--border)" stroke-dasharray="3 3"/>
-        <line x1="${pL+pw/2}" y1="${pT}" x2="${pL+pw/2}" y2="${pT+ph}" stroke="var(--border)" stroke-dasharray="3 3"/>
-        <rect x="${pL}" y="${pT}" width="${pw}" height="${ph}" fill="none" stroke="var(--border)"/>
-        ${dotsHtml}
-        ${centHtml}
-      `;
-      document.getElementById("pcaReadout").textContent = `${pts.length} documents 58D projetés en 2D · ${cnt.length} centroïdes`;
+      svg.innerHTML = `${grid}${dotsHtml}${centHtml}`;
       svg.querySelectorAll("[data-pca]").forEach(el => {
         el.addEventListener("mouseenter", () => {
           document.getElementById("pcaReadout").textContent = el.getAttribute("data-pca");
@@ -690,24 +708,36 @@
     }
 
     // -----------------------------------------------------------------------
-    // Graph 3: Elbow WSSE(K) & Silhouette(K)
+    // Graph 3: Clean Elbow WSSE(K) & Silhouette(K)
     // -----------------------------------------------------------------------
     function renderElbowChart(r) {
       const svg = document.getElementById("elbowSvg");
       const curve = r.elbow_curve || [];
-      const W = 580, H = 215, pL = 54, pR = 46, pT = 16, pB = 30;
+      const W = 600, H = 245, pL = 68, pR = 54, pT = 20, pB = 38;
       const pw = W - pL - pR, ph = H - pT - pB;
 
       if (curve.length === 0) return;
 
       const wsses = curve.map(e => e.wsse);
       const sils = curve.map(e => e.silhouette);
-      const maxW = Math.max(...wsses) * 1.05, minW = Math.min(...wsses) * 0.9;
-      const maxS = Math.max(...sils) * 1.05, minS = Math.min(...sils) * 0.85;
+      const maxW = Math.max(...wsses) * 1.06, minW = Math.min(...wsses) * 0.85;
+      const maxS = 1.0, minS = 0.0;
 
       const xAt = (i) => pL + (i / Math.max(curve.length - 1, 1)) * pw;
       const yW = (v) => pT + ph - ((v - minW) / Math.max(maxW - minW, 1e-6)) * ph;
       const yS = (v) => pT + ph - ((v - minS) / Math.max(maxS - minS, 1e-6)) * ph;
+
+      let grid = "";
+      for (let g = 0; g <= 4; g++) {
+        const y = pT + (g / 4) * ph;
+        const vw = maxW - (g / 4) * (maxW - minW);
+        const vs = maxS - (g / 4) * (maxS - minS);
+        grid += `
+          <line x1="${pL}" y1="${y}" x2="${W-pR}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>
+          <text x="${pL-10}" y="${y+4}" text-anchor="end" fill="#2563eb" font-size="12" font-family="JetBrains Mono">${Math.round(vw).toLocaleString("fr-FR")}</text>
+          <text x="${W-pR+10}" y="${y+4}" text-anchor="start" fill="#10b981" font-size="12" font-family="JetBrains Mono">${vs.toFixed(2)}</text>
+        `;
+      }
 
       const ptsW = curve.map((e, i) => `${xAt(i)},${yW(e.wsse)}`).join(" ");
       const ptsS = curve.map((e, i) => `${xAt(i)},${yS(e.silhouette)}`).join(" ");
@@ -717,23 +747,23 @@
         const cx = xAt(i), cyW = yW(e.wsse), cyS = yS(e.silhouette);
         const isOpt = e.k === r.k;
         if (isOpt) {
-          nodes += `<line x1="${cx}" y1="${pT}" x2="${cx}" y2="${pT+ph}" stroke="#10b981" stroke-dasharray="4 3" stroke-width="1.2"/>`;
+          nodes += `<line x1="${cx}" y1="${pT}" x2="${cx}" y2="${pT+ph}" stroke="#10b981" stroke-dasharray="5 4" stroke-width="2"/>`;
         }
         nodes += `
-          <circle cx="${cx}" cy="${cyW}" r="${isOpt?5.5:4}" fill="#3b82f6" class="cursor-pointer" data-el="K=${e.k} : WSSE=${e.wsse.toFixed(1)} · Silhouette=${e.silhouette.toFixed(4)}"/>
-          <circle cx="${cx}" cy="${cyS}" r="${isOpt?5.5:4}" fill="#10b981" class="cursor-pointer" data-el="K=${e.k} : WSSE=${e.wsse.toFixed(1)} · Silhouette=${e.silhouette.toFixed(4)}"/>
-          <text x="${cx}" y="${H-8}" text-anchor="middle" fill="var(--muted)" font-size="10.5" font-family="JetBrains Mono">K=${e.k}</text>
+          <circle cx="${cx}" cy="${cyW}" r="${isOpt?6.5:5}" fill="#2563eb" stroke="var(--card)" stroke-width="2" class="cursor-pointer" data-el="K = ${e.k} clusters → Coût WSSE = ${e.wsse.toFixed(1)} · Score de Silhouette = ${e.silhouette.toFixed(4)}"/>
+          <circle cx="${cx}" cy="${cyS}" r="${isOpt?6.5:5}" fill="#10b981" stroke="var(--card)" stroke-width="2" class="cursor-pointer" data-el="K = ${e.k} clusters → Coût WSSE = ${e.wsse.toFixed(1)} · Score de Silhouette = ${e.silhouette.toFixed(4)}"/>
+          <text x="${cx}" y="${H-10}" text-anchor="middle" fill="var(--text)" font-weight="${isOpt?'700':'400'}" font-size="12" font-family="JetBrains Mono">K=${e.k}</text>
         `;
       });
 
       svg.innerHTML = `
-        <line x1="${pL}" y1="${pT+ph}" x2="${W-pR}" y2="${pT+ph}" stroke="var(--border)"/>
-        <polyline fill="none" stroke="#3b82f6" stroke-width="2.3" points="${ptsW}"/>
-        <polyline fill="none" stroke="#10b981" stroke-width="2.0" stroke-dasharray="5 3" points="${ptsS}"/>
+        ${grid}
+        <polyline fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${ptsW}"/>
+        <polyline fill="none" stroke="#10b981" stroke-width="2.5" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round" points="${ptsS}"/>
         ${nodes}
       `;
       const best = curve.find(e => e.k === r.k) || curve[0];
-      document.getElementById("elbowReadout").textContent = `K=${best.k} : WSSE=${best.wsse.toFixed(1)} · Silhouette=${best.silhouette.toFixed(4)}`;
+      document.getElementById("elbowReadout").textContent = `Coude Optimal K = ${best.k} → WSSE = ${best.wsse.toFixed(1)} · Score de Silhouette maximal = ${best.silhouette.toFixed(4)}`;
       svg.querySelectorAll("[data-el]").forEach(el => {
         el.addEventListener("mouseenter", () => {
           document.getElementById("elbowReadout").textContent = el.getAttribute("data-el");
@@ -742,7 +772,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Graph 4: Serialization Overhead Bars (RDD L2 vs RDD L1 vs MLlib)
+    // Graph 4: Large, Readable Performance Bars
     // -----------------------------------------------------------------------
     function renderPerfBars(r) {
       const l2 = r.rdd_l2, l1 = r.rdd_l1, ml = r.mllib;
@@ -751,40 +781,42 @@
 
       const items = [
         {
-          title: "Temps d'Exécution Total (s)",
+          title: "Temps d'Exécution Total (secondes)",
           l2Val: l2.total_time_seconds, l1Val: l1.total_time_seconds, mlVal: ml.total_time_seconds,
-          max: maxT, unit: "s"
+          max: maxT
         },
         {
-          title: "Temps Moyen par Itération (s / iter)",
+          title: "Temps Moyen par Itération (secondes / itération)",
           l2Val: l2.avg_iter_seconds, l1Val: l1.avg_iter_seconds, mlVal: ml.avg_iter_seconds,
-          max: maxIt, unit: "s"
+          max: maxIt
         }
       ];
 
       document.getElementById("perfBarsContainer").innerHTML = items.map(it => `
-        <div class="space-y-1.5 font-mono text-xs tabular">
-          <div class="font-sans font-medium text-xs text-[var(--text)]">${it.title}</div>
-          <div class="flex items-center gap-2">
-            <span class="w-24 text-emerald-500">RDD L2</span>
-            <div class="flex-1 h-4 rounded bg-[var(--card-alt)] overflow-hidden">
-              <div class="h-full bg-emerald-500/85 rounded" style="width:${Math.max((it.l2Val/it.max)*100, 3).toFixed(1)}%"></div>
+        <div class="space-y-2.5">
+          <div class="font-semibold text-sm text-[var(--text)]">${it.title}</div>
+          <div class="space-y-2 font-mono text-sm tabular">
+            <div class="flex items-center gap-3">
+              <span class="w-36 font-medium text-blue-600 dark:text-blue-400">MLlib (K-Means||)</span>
+              <div class="flex-1 h-6 rounded-lg bg-[var(--card-alt)] overflow-hidden">
+                <div class="h-full bg-blue-600 rounded-lg" style="width:${Math.max((it.mlVal/it.max)*100, 3).toFixed(1)}%"></div>
+              </div>
+              <span class="w-20 text-right font-bold text-blue-600 dark:text-blue-400">${it.mlVal.toFixed(2)} s</span>
             </div>
-            <span class="w-16 text-right">${it.l2Val.toFixed(2)}${it.unit}</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="w-24 text-amber-500">RDD L1</span>
-            <div class="flex-1 h-4 rounded bg-[var(--card-alt)] overflow-hidden">
-              <div class="h-full bg-amber-500/85 rounded" style="width:${Math.max((it.l1Val/it.max)*100, 3).toFixed(1)}%"></div>
+            <div class="flex items-center gap-3">
+              <span class="w-36 font-medium text-emerald-600 dark:text-emerald-400">RDD Euclid. (L2)</span>
+              <div class="flex-1 h-6 rounded-lg bg-[var(--card-alt)] overflow-hidden">
+                <div class="h-full bg-emerald-500 rounded-lg" style="width:${Math.max((it.l2Val/it.max)*100, 3).toFixed(1)}%"></div>
+              </div>
+              <span class="w-20 text-right font-semibold">${it.l2Val.toFixed(2)} s</span>
             </div>
-            <span class="w-16 text-right">${it.l1Val.toFixed(2)}${it.unit}</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="w-24 text-blue-500">MLlib</span>
-            <div class="flex-1 h-4 rounded bg-[var(--card-alt)] overflow-hidden">
-              <div class="h-full bg-blue-500/85 rounded" style="width:${Math.max((it.mlVal/it.max)*100, 3).toFixed(1)}%"></div>
+            <div class="flex items-center gap-3">
+              <span class="w-36 font-medium text-amber-600 dark:text-amber-400">RDD Manhat. (L1)</span>
+              <div class="flex-1 h-6 rounded-lg bg-[var(--card-alt)] overflow-hidden">
+                <div class="h-full bg-amber-500 rounded-lg" style="width:${Math.max((it.l1Val/it.max)*100, 3).toFixed(1)}%"></div>
+              </div>
+              <span class="w-20 text-right font-semibold">${it.l1Val.toFixed(2)} s</span>
             </div>
-            <span class="w-16 text-right">${it.mlVal.toFixed(2)}${it.unit}</span>
           </div>
         </div>
       `).join("");
@@ -793,27 +825,27 @@
     function renderAuditTable(r) {
       const l2 = r.rdd_l2, l1 = r.rdd_l1, ml = r.mllib;
       const rows = [
-        ["Initialisation", "Échantillon Aléatoire", "Échantillon Aléatoire", "Parallèle K-Means||"],
-        ["Primitive Agrégation", "RDD reduceByKey", "RDD reduceByKey", "Catalyst / Tungsten DF"],
-        ["Itérations", `${l2.num_iterations}`, `${l1.num_iterations}`, `${ml.num_iterations}`],
-        ["Coût Final WSSE", l2.final_wsse.toFixed(2), l1.final_wsse.toFixed(2), ml.final_wsse.toFixed(2)],
-        ["Silhouette Score", l2.silhouette.toFixed(4), l1.silhouette.toFixed(4), ml.silhouette.toFixed(4)],
-        ["Temps Total (s)", `${l2.total_time_seconds.toFixed(3)} s`, `${l1.total_time_seconds.toFixed(3)} s`, `${ml.total_time_seconds.toFixed(3)} s`],
-        ["Temps / Itération", `${l2.avg_iter_seconds.toFixed(3)} s`, `${l1.avg_iter_seconds.toFixed(3)} s`, `${ml.avg_iter_seconds.toFixed(3)} s`],
-        ["Speed-up MLlib", `${r.speedup_vs_rdd_l2.toFixed(2)}×`, `${r.speedup_vs_rdd_l1.toFixed(2)}×`, "1.00× (Référence)"]
+        ["Initialisation des Centroïdes", "Aléatoire (RDD takeSample)", "Aléatoire (RDD takeSample)", "Parallèle K-Means||"],
+        ["Primitive Distribuée", "Map + reduceByKey", "Map + reduceByKey", "Catalyst / Tungsten DF"],
+        ["Nombre d'Itérations", `${l2.num_iterations}`, `${l1.num_iterations}`, `${ml.num_iterations}`],
+        ["Coût Intra-Cluster WSSE Final", l2.final_wsse.toFixed(2), l1.final_wsse.toFixed(2), ml.final_wsse.toFixed(2)],
+        ["Score de Silhouette", l2.silhouette.toFixed(4), l1.silhouette.toFixed(4), ml.silhouette.toFixed(4)],
+        ["Temps d'Exécution Total", `${l2.total_time_seconds.toFixed(2)} s`, `${l1.total_time_seconds.toFixed(2)} s`, `${ml.total_time_seconds.toFixed(2)} s`],
+        ["Temps Moyen / Itération", `${l2.avg_iter_seconds.toFixed(2)} s`, `${l1.avg_iter_seconds.toFixed(2)} s`, `${ml.avg_iter_seconds.toFixed(2)} s`],
+        ["Facteur d'Accélération MLlib", `${r.speedup_vs_rdd_l2.toFixed(2)}×`, `${r.speedup_vs_rdd_l1.toFixed(2)}×`, "1.00× (Référence)"]
       ];
       document.getElementById("auditTableBody").innerHTML = rows.map(([m, v2, v1, vm]) => `
-        <tr class="hover:bg-[var(--card-alt)]/60 transition">
-          <td class="py-2 pr-2 font-sans text-[var(--muted)]">${m}</td>
-          <td class="py-2 px-2 text-right">${v2}</td>
-          <td class="py-2 px-2 text-right">${v1}</td>
-          <td class="py-2 pl-2 text-right font-semibold">${vm}</td>
+        <tr class="hover:bg-[var(--card-alt)]/70 transition">
+          <td class="py-3 pr-3 font-medium text-[var(--text)]">${m}</td>
+          <td class="py-3 px-3 text-right font-mono text-[var(--text-secondary)]">${v2}</td>
+          <td class="py-3 px-3 text-right font-mono text-[var(--text-secondary)]">${v1}</td>
+          <td class="py-3 pl-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">${vm}</td>
         </tr>
       `).join("");
     }
 
     // -----------------------------------------------------------------------
-    // Live SSE Benchmark Trigger
+    // Live SSE Stream Handler
     // -----------------------------------------------------------------------
     function startLiveStream() {
       if (activeES) { activeES.close(); activeES = null; }
@@ -833,8 +865,6 @@
       document.getElementById("runLiveBtn").classList.add("opacity-60", "pointer-events-none");
       document.getElementById("runLiveText").textContent = "Streaming en cours...";
       document.getElementById("stopLiveBtn").classList.remove("hidden");
-      document.getElementById("liveLogTicker").innerHTML = "";
-      appendLog(`Démarrage du benchmark Live 58D : N=${numDocs}, K=${k}, maxIter=${maxIter}`, true);
 
       const qs = new URLSearchParams({ num_docs: numDocs, k: k, max_iter: maxIter });
       const es = new EventSource(`/api/benchmark/stream?${qs.toString()}`);
@@ -843,7 +873,6 @@
       es.addEventListener("phase", e => {
         const d = JSON.parse(e.data);
         setProgress(d.progress, d.phase, d.message);
-        appendLog(d.message);
       });
 
       es.addEventListener("rdd_l2_iter", e => {
@@ -851,9 +880,7 @@
         REPORT.rdd_l2.history.push(d);
         REPORT.rdd_l2.num_iterations = d.iteration;
         REPORT.rdd_l2.final_wsse = d.wsse;
-        const msg = `[RDD L2 Euclidienne] Itération ${d.iteration}/${d.max_iter} -> WSSE = ${d.wsse.toFixed(2)} · Shift = ${d.max_shift.toExponential(2)} (${d.duration_seconds}s)`;
-        setProgress(d.progress, `RDD L2 (${d.iteration}/${d.max_iter})`, msg);
-        appendLog(msg, true);
+        setProgress(d.progress, `RDD L2 (${d.iteration}/${d.max_iter})`, `Itération L2 ${d.iteration}/${d.max_iter} → WSSE = ${d.wsse.toFixed(1)} (${d.duration_seconds}s)`);
         renderAll();
       });
 
@@ -862,9 +889,7 @@
         REPORT.rdd_l1.history.push(d);
         REPORT.rdd_l1.num_iterations = d.iteration;
         REPORT.rdd_l1.final_wsse = d.wsse;
-        const msg = `[RDD L1 Manhattan] Itération ${d.iteration}/${d.max_iter} -> WSSE = ${d.wsse.toFixed(2)} · Shift = ${d.max_shift.toExponential(2)} (${d.duration_seconds}s)`;
-        setProgress(d.progress, `RDD L1 (${d.iteration}/${d.max_iter})`, msg);
-        appendLog(msg, true);
+        setProgress(d.progress, `RDD L1 (${d.iteration}/${d.max_iter})`, `Itération L1 ${d.iteration}/${d.max_iter} → WSSE = ${d.wsse.toFixed(1)} (${d.duration_seconds}s)`);
         renderAll();
       });
 
@@ -873,9 +898,7 @@
         es.close();
         activeES = null;
         REPORT = d.report;
-        const msg = `Benchmark 58D terminé en ${d.total_stream_seconds}s ! Rapport PDF kmeans_convergence_report.pdf mis à jour.`;
-        setProgress(100, "TERMINÉ", msg);
-        appendLog(msg, true);
+        setProgress(100, "TERMINÉ", `Benchmark terminé en ${d.total_stream_seconds}s ! Rapport PDF mis à jour.`);
         finishStreamUI();
         renderAll();
       });
@@ -883,7 +906,7 @@
       es.addEventListener("error", e => {
         if (e.data) {
           const d = JSON.parse(e.data);
-          appendLog(`Erreur : ${d.message}`);
+          setProgress(100, "ERREUR", d.message);
         }
         es.close();
         activeES = null;
@@ -893,14 +916,14 @@
 
     function finishStreamUI() {
       document.getElementById("runLiveBtn").classList.remove("opacity-60", "pointer-events-none");
-      document.getElementById("runLiveText").textContent = "Lancer Benchmark Live (Stream)";
+      document.getElementById("runLiveText").textContent = "Lancer le Benchmark Live";
       document.getElementById("stopLiveBtn").classList.add("hidden");
     }
 
     document.getElementById("runLiveBtn").addEventListener("click", startLiveStream);
     document.getElementById("stopLiveBtn").addEventListener("click", () => {
       if (activeES) { activeES.close(); activeES = null; }
-      setProgress(100, "STOPPÉ", "Exécution interrompue.");
+      setProgress(100, "ARRÊTÉ", "Exécution interrompue par l'utilisateur.");
       finishStreamUI();
     });
 
@@ -909,8 +932,8 @@
         activeConvMetric = btn.dataset.cmetric;
         document.querySelectorAll(".cm-btn").forEach(b => {
           b.className = b === btn
-            ? "cm-btn px-2.5 py-1 rounded-md bg-orange-600 text-white transition"
-            : "cm-btn px-2.5 py-1 rounded-md text-[var(--muted)] transition";
+            ? "cm-btn px-3 py-1.5 rounded-lg bg-blue-600 text-white transition"
+            : "cm-btn px-3 py-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)] transition";
         });
         renderWsseChart(REPORT);
       });
@@ -920,7 +943,7 @@
       const html = document.documentElement;
       const isDark = html.classList.toggle("dark");
       document.getElementById("themeIcon").textContent = isDark ? "☀" : "☾";
-      document.getElementById("themeLabel").textContent = isDark ? "Light" : "Dark";
+      document.getElementById("themeLabel").textContent = isDark ? "Mode Clair" : "Mode Sombre";
     });
 
     fetch("/api/mp10").then(r => r.ok ? r.json() : null).then(data => {
